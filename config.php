@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Configurações do banco de dados
 $config = [
     'db_host' => 'localhost',
@@ -31,6 +31,6 @@ $venda = new Venda($pdo);
 $compra = new Compra($pdo);
 $relatorio = new Relatorio($pdo);
 $log = new LogSistema($pdo);
-// $backup = new Backup($pdo, $config); // Temporariamente removido
+// $backup = new Backup($pdo, $config); // Removido
 $config_empresa = new ConfiguracaoEmpresa($pdo);
 $config_sistema = new ConfiguracaoSistema($pdo);

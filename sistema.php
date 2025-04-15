@@ -11,452 +11,7 @@
 // Função para conectar ao banco de dados
 function conectarBD($config) {
     try {
-        $dsn = "mysql:host={$config['db_host']}
-
-// Classe para gerenciar backups do sistema
-class Backup {
-    private $pdo;
-    private $config;
-    private $diretorio_backups;
-
-    public function __construct($pdo, $config) {
-        $this->pdo = $pdo;
-        $this->config = $config;
-        
-        // Define o diretório de backups
-        $this->diretorio_backups = dirname(__FILE__) . '/backups';
-        
-        // Cria o diretório se não existir
-        if (!file_exists($this->diretorio_backups)) {
-            mkdir($this->diretorio_backups, 0755, true);
-        }
-    }
-
-    // Executar backup do banco de dados usando apenas PHP
-    public function executar() {
-        try {
-            // Gera um nome único para o arquivo de backup
-            $timestamp = date('Y-m-d_H-i-s');
-            $nome_arquivo = 'backup_' . $timestamp . '.sql';
-            $caminho_arquivo = $this->diretorio_backups . '/' . $nome_arquivo;
-            
-            // Abre o arquivo para escrita
-            $fp = fopen($caminho_arquivo, 'w');
-            
-            if ($fp === false) {
-                throw new Exception("Erro ao criar o arquivo de backup.");
-            }
-            
-            // Adiciona comentário de cabeçalho no arquivo SQL
-            fwrite($fp, "-- Backup do Sistema PDV\n");
-            fwrite($fp, "-- Data: " . date('Y-m-d H:i:s') . "\n");
-            fwrite($fp, "-- -----------------------------------------------------\n\n");
-            
-            // Obtém a lista de tabelas
-            $stmt = $this->pdo->query("SHOW TABLES");
-            $tabelas = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            
-            foreach ($tabelas as $tabela) {
-                // Adiciona comando DROP TABLE
-                fwrite($fp, "DROP TABLE IF EXISTS `{$tabela}`;\n");
-                
-                // Obtém estrutura da tabela
-                $stmt = $this->pdo->query("SHOW CREATE TABLE `{$tabela}`");
-                $estrutura = $stmt->fetch(PDO::FETCH_ASSOC);
-                fwrite($fp, $estrutura['Create Table'] . ";\n\n");
-                
-                // Obtém dados da tabela
-                $stmt = $this->pdo->query("SELECT * FROM `{$tabela}`");
-                $dados = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                if (count($dados) > 0) {
-                    // Prepara comando INSERT
-                    $colunas = array_keys($dados[0]);
-                    fwrite($fp, "INSERT INTO `{$tabela}` (`" . implode("`, `", $colunas) . "`) VALUES\n");
-                    
-                    $contador = 0;
-                    $total = count($dados);
-                    
-                    foreach ($dados as $linha) {
-                        $contador++;
-                        
-                        // Formata os valores
-                        $valores = [];
-                        foreach ($linha as $valor) {
-                            if ($valor === null) {
-                                $valores[] = 'NULL';
-                            } elseif (is_numeric($valor)) {
-                                $valores[] = $valor;
-                            } else {
-                                $valores[] = "'" . addslashes($valor) . "'";
-                            }
-                        }
-                        
-                        // Adiciona linha de valores
-                        fwrite($fp, "(" . implode(", ", $valores) . ")");
-                        
-                        // Adiciona vírgula ou ponto-e-vírgula conforme necessário
-                        fwrite($fp, ($contador < $total) ? ",\n" : ";\n\n");
-                    }
-                }
-            }
-            
-            // Fecha o arquivo
-            fclose($fp);
-            
-            // Registra o backup no log
-            if (isset($GLOBALS['log'])) {
-                $tamanho = $this->formatarTamanho(filesize($caminho_arquivo));
-                $GLOBALS['log']->registrar('Backup', "Backup do banco de dados gerado: {$nome_arquivo} ({$tamanho})");
-            }
-            
-            return [
-                'sucesso' => true,
-                'arquivo' => $nome_arquivo,
-                'caminho' => $caminho_arquivo,
-                'tamanho' => filesize($caminho_arquivo)
-            ];
-            
-        } catch (Exception $e) {
-            if (isset($fp) && $fp !== false) {
-                fclose($fp);
-            }
-            
-            if (isset($caminho_arquivo) && file_exists($caminho_arquivo)) {
-                @unlink($caminho_arquivo);
-            }
-            
-            // Registra erro no log
-            if (isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar('Backup', "Erro ao gerar backup: " . $e->getMessage());
-            }
-            
-            return [
-                'sucesso' => false,
-                'erro' => $e->getMessage()
-            ];
-        }
-    }
-    
-    // Restaurar backup do banco de dados usando apenas PHP
-    public function restaurar($arquivo_temp) {
-        try {
-            // Verifica se o arquivo foi enviado corretamente
-            if (!file_exists($arquivo_temp)) {
-                throw new Exception("Arquivo de backup não encontrado.");
-            }
-            
-            // Define um nome para o arquivo de backup
-            $timestamp = date('Y-m-d_H-i-s');
-            $nome_arquivo = 'restauracao_' . $timestamp . '.sql';
-            $caminho_arquivo = $this->diretorio_backups . '/' . $nome_arquivo;
-            
-            // Move o arquivo temporário para o diretório de backups
-            if (!move_uploaded_file($arquivo_temp, $caminho_arquivo)) {
-                throw new Exception("Erro ao mover o arquivo de backup.");
-            }
-            
-            // Lê o arquivo de backup
-            $sql = file_get_contents($caminho_arquivo);
-            if ($sql === false) {
-                throw new Exception("Erro ao ler o arquivo de backup.");
-            }
-            
-            // Divide o arquivo em consultas SQL individuais
-            $consultas = explode(';', $sql);
-            
-            // Inicia a transação
-            $this->pdo->beginTransaction();
-            
-            // Executa cada consulta
-            foreach ($consultas as $consulta) {
-                $consulta = trim($consulta);
-                if (!empty($consulta)) {
-                    $this->pdo->exec($consulta);
-                }
-            }
-            
-            // Finaliza a transação
-            $this->pdo->commit();
-            
-            // Registra a restauração no log
-            if (isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar('Restauração', "Backup do banco de dados restaurado: {$nome_arquivo}");
-            }
-            
-            return [
-                'sucesso' => true,
-                'mensagem' => 'Backup restaurado com sucesso.'
-            ];
-            
-        } catch (Exception $e) {
-            // Desfaz a transação em caso de erro
-            if (isset($this->pdo) && $this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            
-            // Registra erro no log
-            if (isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar('Restauração', "Erro ao restaurar backup: " . $e->getMessage());
-            }
-            
-            return [
-                'sucesso' => false,
-                'erro' => $e->getMessage()
-            ];
-        }
-    }
-    
-    // Listar backups disponíveis
-    public function listarBackups() {
-        $backups = [];
-        
-        // Verifica se o diretório existe
-        if (!file_exists($this->diretorio_backups)) {
-            return $backups;
-        }
-        
-        // Obtém a lista de arquivos de backup
-        $arquivos = glob($this->diretorio_backups . '/backup_*.sql');
-        
-        // Ordena arquivos por data (mais recente primeiro)
-        usort($arquivos, function($a, $b) {
-            return filemtime($b) - filemtime($a);
-        });
-        
-        // Formata as informações de cada arquivo
-        foreach ($arquivos as $arquivo) {
-            $data = filemtime($arquivo);
-            $tamanho = filesize($arquivo);
-            
-            $backups[] = [
-                'arquivo' => basename($arquivo),
-                'data' => date('Y-m-d H:i:s', $data),
-                'data_formatada' => date('d/m/Y H:i', $data),
-                'tamanho' => $tamanho,
-                'tamanho_formatado' => $this->formatarTamanho($tamanho)
-            ];
-        }
-        
-        return $backups;
-    }
-    
-    // Excluir backup
-    public function excluirBackup($arquivo) {
-        $caminho_arquivo = $this->diretorio_backups . '/' . $arquivo;
-        
-        // Verifica se o arquivo existe
-        if (!file_exists($caminho_arquivo)) {
-            return [
-                'sucesso' => false,
-                'erro' => 'Arquivo de backup nao encontrado.'
-            ];
-        }
-        
-        // Exclui o arquivo
-        if (unlink($caminho_arquivo)) {
-            // Registra a exclusão no log
-            if (isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar('Backup', "Arquivo de backup excluido: {$arquivo}");
-            }
-            
-            return [
-                'sucesso' => true,
-                'mensagem' => 'Backup excluido com sucesso.'
-            ];
-        } else {
-            return [
-                'sucesso' => false,
-                'erro' => 'Erro ao excluir o arquivo de backup.'
-            ];
-        }
-    }
-    
-    // Limpar backups antigos
-    public function limparBackupsAntigos($dias = 30) {
-        $backups = $this->listarBackups();
-        $contador = 0;
-        
-        foreach ($backups as $backup) {
-            $data_backup = strtotime($backup['data']);
-            $data_limite = strtotime("-{$dias} days");
-            
-            if ($data_backup < $data_limite) {
-                $resultado = $this->excluirBackup($backup['arquivo']);
-                if ($resultado['sucesso']) {
-                    $contador++;
-                }
-            }
-        }
-        
-        return [
-            'sucesso' => true,
-            'quantidade' => $contador,
-            'mensagem' => "{$contador} backup(s) antigo(s) excluido(s) com sucesso."
-        ];
-    }
-    
-    // Formatar tamanho de arquivo
-    public function formatarTamanho($bytes) {
-        $unidades = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
-        $bytes = max($bytes, 0);
-        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
-        $pow = min($pow, count($unidades) - 1);
-        
-        $bytes /= pow(1024, $pow);
-        
-        return round($bytes, 2) . ' ' . $unidades[$pow];
-    }
-    
-    // Verificar se o diretório de backups é gravável
-    public function verificarDiretorio() {
-        return [
-            'existe' => file_exists($this->diretorio_backups),
-            'gravavel' => is_writable($this->diretorio_backups),
-            'caminho' => $this->diretorio_backups
-        ];
-    }
-}
-
-// Classe para gerenciar configurações da empresa
-class ConfiguracaoEmpresa {
-    private $pdo;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Buscar configurações da empresa
-    public function buscar() {
-        $stmt = $this->pdo->query("SELECT * FROM configuracoes_empresa LIMIT 1");
-        return $stmt->fetch();
-    }
-
-    // Atualizar configurações da empresa
-    public function atualizar($dados) {
-        $stmt = $this->pdo->prepare("
-            UPDATE configuracoes_empresa SET 
-            nome = :nome, 
-            razao_social = :razao_social, 
-            cnpj = :cnpj, 
-            endereco = :endereco, 
-            cidade = :cidade, 
-            estado = :estado, 
-            telefone = :telefone, 
-            email = :email, 
-            site = :site
-            WHERE id = :id
-        ");
-        
-        $stmt->bindParam(':id', $dados['id']);
-        $stmt->bindParam(':nome', $dados['nome']);
-        $stmt->bindParam(':razao_social', $dados['razao_social']);
-        $stmt->bindParam(':cnpj', $dados['cnpj']);
-        $stmt->bindParam(':endereco', $dados['endereco']);
-        $stmt->bindParam(':cidade', $dados['cidade']);
-        $stmt->bindParam(':estado', $dados['estado']);
-        $stmt->bindParam(':telefone', $dados['telefone']);
-        $stmt->bindParam(':email', $dados['email']);
-        $stmt->bindParam(':site', $dados['site']);
-        
-        $result = $stmt->execute();
-        
-        // Registrar no log do sistema
-        if ($result && isset($GLOBALS['log'])) {
-            $GLOBALS['log']->registrar('Configuração', "Informações da empresa atualizadas");
-        }
-        
-        return $result;
-    }
-
-    // Atualizar logo da empresa
-    public function atualizarLogo($arquivo_temp, $nome_arquivo) {
-        // Diretório para uploads
-        $diretorio_uploads = dirname(__FILE__) . '/uploads';
-        
-        // Cria o diretório se não existir
-        if (!file_exists($diretorio_uploads)) {
-            mkdir($diretorio_uploads, 0755, true);
-        }
-        
-        // Gera um nome único para o arquivo
-        $extensao = pathinfo($nome_arquivo, PATHINFO_EXTENSION);
-        $novo_nome = 'logo_' . date('YmdHis') . '.' . $extensao;
-        $caminho_destino = $diretorio_uploads . '/' . $novo_nome;
-        
-        // Move o arquivo para o diretório de uploads
-        if (move_uploaded_file($arquivo_temp, $caminho_destino)) {
-            // Atualiza o nome do arquivo no banco de dados
-            $stmt = $this->pdo->prepare("UPDATE configuracoes_empresa SET logo = :logo");
-            $stmt->bindParam(':logo', $novo_nome);
-            
-            $result = $stmt->execute();
-            
-            // Registrar no log do sistema
-            if ($result && isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar('Configuração', "Logo da empresa atualizada");
-            }
-            
-            return $result;
-        }
-        
-        return false;
-    }
-}
-
-// Classe para gerenciar configurações do sistema
-class ConfiguracaoSistema {
-    private $pdo;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Buscar configurações do sistema
-    public function buscar() {
-        $stmt = $this->pdo->query("SELECT * FROM configuracoes_sistema LIMIT 1");
-        return $stmt->fetch();
-    }
-
-    // Atualizar configurações do sistema
-    public function atualizar($dados) {
-        $stmt = $this->pdo->prepare("
-            UPDATE configuracoes_sistema SET 
-            itens_por_pagina = :itens_por_pagina, 
-            tema = :tema, 
-            moeda = :moeda, 
-            formato_data = :formato_data, 
-            estoque_negativo = :estoque_negativo, 
-            alerta_estoque = :alerta_estoque, 
-            impressao_automatica = :impressao_automatica
-            WHERE id = :id
-        ");
-        
-        // Converter checkbox para booleano
-        $estoque_negativo = isset($dados['estoque_negativo']) ? 1 : 0;
-        $alerta_estoque = isset($dados['alerta_estoque']) ? 1 : 0;
-        $impressao_automatica = isset($dados['impressao_automatica']) ? 1 : 0;
-        
-        $stmt->bindParam(':id', $dados['id']);
-        $stmt->bindParam(':itens_por_pagina', $dados['itens_por_pagina']);
-        $stmt->bindParam(':tema', $dados['tema']);
-        $stmt->bindParam(':moeda', $dados['moeda']);
-        $stmt->bindParam(':formato_data', $dados['formato_data']);
-        $stmt->bindParam(':estoque_negativo', $estoque_negativo);
-        $stmt->bindParam(':alerta_estoque', $alerta_estoque);
-        $stmt->bindParam(':impressao_automatica', $impressao_automatica);
-        
-        $result = $stmt->execute();
-        
-        // Registrar no log do sistema
-        if ($result && isset($GLOBALS['log'])) {
-            $GLOBALS['log']->registrar('Configuração', "Configurações do sistema atualizadas");
-        }
-        
-        return $result;
-    }
-};dbname={$config['db_name']};charset={$config['charset']}";
+        $dsn = "mysql:host={$config['db_host']};dbname={$config['db_name']};charset={$config['charset']}";
         $opcoes = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -524,7 +79,6 @@ function formatarDinheiro($valor) {
 function formatarData($data) {
     return date('d/m/Y', strtotime($data));
 }
-
 // Classe para tabelas do banco de dados
 class TabelasBD {
     private $pdo;
@@ -791,7 +345,144 @@ class TabelasBD {
         return true;
     }
 }
+// Classe para gerenciar configurações da empresa
+class ConfiguracaoEmpresa {
+    private $pdo;
 
+    public function __construct($pdo) {
+        $this->pdo = $pdo;
+    }
+
+    // Buscar configurações da empresa
+    public function buscar() {
+        $stmt = $this->pdo->query("SELECT * FROM configuracoes_empresa LIMIT 1");
+        return $stmt->fetch();
+    }
+
+    // Atualizar configurações da empresa
+    public function atualizar($dados) {
+        $stmt = $this->pdo->prepare("
+            UPDATE configuracoes_empresa SET 
+            nome = :nome, 
+            razao_social = :razao_social, 
+            cnpj = :cnpj, 
+            endereco = :endereco, 
+            cidade = :cidade, 
+            estado = :estado, 
+            telefone = :telefone, 
+            email = :email, 
+            site = :site
+            WHERE id = :id
+        ");
+        
+        $stmt->bindParam(':id', $dados['id']);
+        $stmt->bindParam(':nome', $dados['nome']);
+        $stmt->bindParam(':razao_social', $dados['razao_social']);
+        $stmt->bindParam(':cnpj', $dados['cnpj']);
+        $stmt->bindParam(':endereco', $dados['endereco']);
+        $stmt->bindParam(':cidade', $dados['cidade']);
+        $stmt->bindParam(':estado', $dados['estado']);
+        $stmt->bindParam(':telefone', $dados['telefone']);
+        $stmt->bindParam(':email', $dados['email']);
+        $stmt->bindParam(':site', $dados['site']);
+        
+        $result = $stmt->execute();
+        
+        // Registrar no log do sistema
+        if ($result && isset($GLOBALS['log'])) {
+            $GLOBALS['log']->registrar('Configuração', "Informações da empresa atualizadas");
+        }
+        
+        return $result;
+    }
+
+    // Atualizar logo da empresa
+    public function atualizarLogo($arquivo_temp, $nome_arquivo) {
+        // Diretório para uploads
+        $diretorio_uploads = dirname(__FILE__) . '/uploads';
+        
+        // Cria o diretório se não existir
+        if (!file_exists($diretorio_uploads)) {
+            mkdir($diretorio_uploads, 0755, true);
+        }
+        
+        // Gera um nome único para o arquivo
+        $extensao = pathinfo($nome_arquivo, PATHINFO_EXTENSION);
+        $novo_nome = 'logo_' . date('YmdHis') . '.' . $extensao;
+        $caminho_destino = $diretorio_uploads . '/' . $novo_nome;
+        
+        // Move o arquivo para o diretório de uploads
+        if (move_uploaded_file($arquivo_temp, $caminho_destino)) {
+            // Atualiza o nome do arquivo no banco de dados
+            $stmt = $this->pdo->prepare("UPDATE configuracoes_empresa SET logo = :logo");
+            $stmt->bindParam(':logo', $novo_nome);
+            
+            $result = $stmt->execute();
+            
+            // Registrar no log do sistema
+            if ($result && isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar('Configuração', "Logo da empresa atualizada");
+            }
+            
+            return $result;
+        }
+        
+        return false;
+    }
+}
+
+// Classe para gerenciar configurações do sistema
+class ConfiguracaoSistema {
+    private $pdo;
+
+    public function __construct($pdo) {
+        $this->pdo = $pdo;
+    }
+
+    // Buscar configurações do sistema
+    public function buscar() {
+        $stmt = $this->pdo->query("SELECT * FROM configuracoes_sistema LIMIT 1");
+        return $stmt->fetch();
+    }
+
+    // Atualizar configurações do sistema
+    public function atualizar($dados) {
+        $stmt = $this->pdo->prepare("
+            UPDATE configuracoes_sistema SET 
+            itens_por_pagina = :itens_por_pagina, 
+            tema = :tema, 
+            moeda = :moeda, 
+            formato_data = :formato_data, 
+            estoque_negativo = :estoque_negativo, 
+            alerta_estoque = :alerta_estoque, 
+            impressao_automatica = :impressao_automatica
+            WHERE id = :id
+        ");
+        
+        // Converter checkbox para booleano
+        $estoque_negativo = isset($dados['estoque_negativo']) ? 1 : 0;
+        $alerta_estoque = isset($dados['alerta_estoque']) ? 1 : 0;
+        $impressao_automatica = isset($dados['impressao_automatica']) ? 1 : 0;
+        
+        $stmt->bindParam(':id', $dados['id']);
+        $stmt->bindParam(':itens_por_pagina', $dados['itens_por_pagina']);
+        $stmt->bindParam(':tema', $dados['tema']);
+        $stmt->bindParam(':moeda', $dados['moeda']);
+        $stmt->bindParam(':formato_data', $dados['formato_data']);
+        $stmt->bindParam(':estoque_negativo', $estoque_negativo);
+        $stmt->bindParam(':alerta_estoque', $alerta_estoque);
+        $stmt->bindParam(':impressao_automatica', $impressao_automatica);
+        
+        $result = $stmt->execute();
+        
+        // Registrar no log do sistema
+        if ($result && isset($GLOBALS['log'])) {
+            $GLOBALS['log']->registrar('Configuração', "Configurações do sistema atualizadas");
+        }
+        
+        return $result;
+    }
+}
 // Classe para gerenciar usuários
 class Usuario {
     private $pdo;
@@ -923,7 +614,6 @@ class Usuario {
         return $stmt->execute();
     }
 }
-
 // Classe para gerenciar produtos
 class Produto {
     private $pdo;
@@ -1134,7 +824,6 @@ class Produto {
         return $stmt->fetchAll();
     }
 }
-
 // Classe para gerenciar categorias
 class Categoria {
     private $pdo;
@@ -1287,848 +976,5 @@ class Cliente {
         $stmt = $this->pdo->prepare("DELETE FROM clientes WHERE id = :id");
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
         return $stmt->execute();
-    }
-}
-
-// Classe para gerenciar fornecedores
-class Fornecedor {
-    private $pdo;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Listar todos os fornecedores
-    public function listar() {
-        $stmt = $this->pdo->query("SELECT * FROM fornecedores ORDER BY nome");
-        return $stmt->fetchAll();
-    }
-
-    // Buscar fornecedor por ID
-    public function buscarPorId($id) {
-        $stmt = $this->pdo->prepare("SELECT * FROM fornecedores WHERE id = :id LIMIT 1");
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetch();
-    }
-
-    // Adicionar fornecedor
-    public function adicionar($dados) {
-        $stmt = $this->pdo->prepare("
-            INSERT INTO fornecedores 
-            (nome, cpf_cnpj, email, telefone, endereco, cidade, estado, cep, observacoes) 
-            VALUES 
-            (:nome, :cpf_cnpj, :email, :telefone, :endereco, :cidade, :estado, :cep, :observacoes)
-        ");
-        
-        $stmt->bindParam(':nome', $dados['nome']);
-        $stmt->bindParam(':cpf_cnpj', $dados['cpf_cnpj']);
-        $stmt->bindParam(':email', $dados['email']);
-        $stmt->bindParam(':telefone', $dados['telefone']);
-        $stmt->bindParam(':endereco', $dados['endereco']);
-        $stmt->bindParam(':cidade', $dados['cidade']);
-        $stmt->bindParam(':estado', $dados['estado']);
-        $stmt->bindParam(':cep', $dados['cep']);
-        $stmt->bindParam(':observacoes', $dados['observacoes']);
-        
-        return $stmt->execute();
-    }
-
-    // Atualizar fornecedor
-    public function atualizar($id, $dados) {
-        $stmt = $this->pdo->prepare("
-            UPDATE fornecedores SET 
-            nome = :nome, 
-            cpf_cnpj = :cpf_cnpj, 
-            email = :email, 
-            telefone = :telefone, 
-            endereco = :endereco, 
-            cidade = :cidade, 
-            estado = :estado, 
-            cep = :cep, 
-            observacoes = :observacoes 
-            WHERE id = :id
-        ");
-        
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->bindParam(':nome', $dados['nome']);
-        $stmt->bindParam(':cpf_cnpj', $dados['cpf_cnpj']);
-        $stmt->bindParam(':email', $dados['email']);
-        $stmt->bindParam(':telefone', $dados['telefone']);
-        $stmt->bindParam(':endereco', $dados['endereco']);
-        $stmt->bindParam(':cidade', $dados['cidade']);
-        $stmt->bindParam(':estado', $dados['estado']);
-        $stmt->bindParam(':cep', $dados['cep']);
-        $stmt->bindParam(':observacoes', $dados['observacoes']);
-        
-        return $stmt->execute();
-    }
-
-    // Excluir fornecedor
-    public function excluir($id) {
-        // Verificar se o fornecedor tem compras
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM compras WHERE fornecedor_id = :id");
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
-        
-        if ($stmt->fetchColumn() > 0) {
-            return false; // Não pode excluir se tiver compras
-        }
-        
-        $stmt = $this->pdo->prepare("DELETE FROM fornecedores WHERE id = :id");
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        return $stmt->execute();
-    }
-}
-
-// Classe para gerenciar vendas
-class Venda {
-    private $pdo;
-    private $produto;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-        $this->produto = new Produto($pdo);
-    }
-
-    // Listar todas as vendas
-    public function listar() {
-        $stmt = $this->pdo->query("
-            SELECT v.*, u.nome AS usuario_nome, c.nome AS cliente_nome, 
-            DATE_FORMAT(v.data_venda, '%d/%m/%Y %H:%i') AS data_formatada
-            FROM vendas v
-            LEFT JOIN usuarios u ON v.usuario_id = u.id
-            LEFT JOIN clientes c ON v.cliente_id = c.id
-            ORDER BY v.data_venda DESC
-        ");
-        return $stmt->fetchAll();
-    }
-
-    // Buscar venda por ID
-    public function buscarPorId($id) {
-        $stmt = $this->pdo->prepare("
-            SELECT v.*, u.nome AS usuario_nome, c.nome AS cliente_nome,
-            DATE_FORMAT(v.data_venda, '%d/%m/%Y %H:%i') AS data_formatada
-            FROM vendas v
-            LEFT JOIN usuarios u ON v.usuario_id = u.id
-            LEFT JOIN clientes c ON v.cliente_id = c.id
-            WHERE v.id = :id LIMIT 1
-        ");
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetch();
-    }
-
-    // Buscar itens de uma venda
-    public function buscarItens($venda_id) {
-        $stmt = $this->pdo->prepare("
-            SELECT i.*, p.nome AS produto_nome, p.codigo AS produto_codigo
-            FROM itens_venda i
-            LEFT JOIN produtos p ON i.produto_id = p.id
-            WHERE i.venda_id = :venda_id
-            ORDER BY i.id
-        ");
-        $stmt->bindParam(':venda_id', $venda_id, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Adicionar venda
-    public function adicionar($dados) {
-        try {
-            // Inicia transação
-            $this->pdo->beginTransaction();
-            
-            // Insere a venda
-            $stmt = $this->pdo->prepare("
-                INSERT INTO vendas 
-                (usuario_id, cliente_id, valor_total, desconto, forma_pagamento, status, observacoes) 
-                VALUES 
-                (:usuario_id, :cliente_id, :valor_total, :desconto, :forma_pagamento, :status, :observacoes)
-            ");
-            
-            $stmt->bindParam(':usuario_id', $_SESSION['usuario_id'], PDO::PARAM_INT);
-            $stmt->bindParam(':cliente_id', $dados['cliente_id'], PDO::PARAM_INT);
-            $stmt->bindParam(':valor_total', $dados['valor_total']);
-            $stmt->bindParam(':desconto', $dados['desconto']);
-            $stmt->bindParam(':forma_pagamento', $dados['forma_pagamento']);
-            $stmt->bindParam(':status', $dados['status']);
-            $stmt->bindParam(':observacoes', $dados['observacoes']);
-            
-            $stmt->execute();
-            $venda_id = $this->pdo->lastInsertId();
-            
-            // Insere os itens da venda
-            foreach ($dados['itens'] as $item) {
-                // Verifica estoque
-                if (!$this->produto->verificarEstoque($item['produto_id'], $item['quantidade'])) {
-                    throw new Exception("Estoque insuficiente para o produto ID: " . $item['produto_id']);
-                }
-                
-                $stmt = $this->pdo->prepare("
-                    INSERT INTO itens_venda 
-                    (venda_id, produto_id, quantidade, preco_unitario, subtotal) 
-                    VALUES 
-                    (:venda_id, :produto_id, :quantidade, :preco_unitario, :subtotal)
-                ");
-                
-                $subtotal = $item['quantidade'] * $item['preco_unitario'];
-                
-                $stmt->bindParam(':venda_id', $venda_id, PDO::PARAM_INT);
-                $stmt->bindParam(':produto_id', $item['produto_id'], PDO::PARAM_INT);
-                $stmt->bindParam(':quantidade', $item['quantidade'], PDO::PARAM_INT);
-                $stmt->bindParam(':preco_unitario', $item['preco_unitario']);
-                $stmt->bindParam(':subtotal', $subtotal);
-                
-                $stmt->execute();
-                
-                // Registra movimentação de estoque
-                $this->produto->registrarMovimentacao([
-                    'produto_id' => $item['produto_id'],
-                    'tipo' => 'saida',
-                    'quantidade' => $item['quantidade'],
-                    'observacao' => 'Venda #' . $venda_id,
-                    'origem' => 'venda',
-                    'documento_id' => $venda_id
-                ]);
-            }
-            
-            // Finaliza transação
-            $this->pdo->commit();
-            
-            // Registrar no log do sistema
-            if (isset($GLOBALS['log'])) {
-                $cliente_nome = "não identificado";
-                if (!empty($dados['cliente_id'])) {
-                    $stmt = $this->pdo->prepare("SELECT nome FROM clientes WHERE id = :id LIMIT 1");
-                    $stmt->bindParam(':id', $dados['cliente_id']);
-                    $stmt->execute();
-                    $cliente = $stmt->fetch();
-                    if ($cliente) {
-                        $cliente_nome = $cliente['nome'];
-                    }
-                }
-                
-                $GLOBALS['log']->registrar(
-                    'Venda', 
-                    "Nova venda #{$venda_id} registrada - Cliente: {$cliente_nome} - Valor: " . 
-                    number_format($dados['valor_total'], 2, ',', '.')
-                );
-            }
-            
-            return $venda_id;
-            
-        } catch (Exception $e) {
-            // Desfaz transação em caso de erro
-            $this->pdo->rollBack();
-            error_log($e->getMessage());
-            return false;
-        }
-    }
-
-    // Cancelar venda
-    public function cancelar($id) {
-        try {
-            // Inicia transação
-            $this->pdo->beginTransaction();
-            
-            // Busca itens da venda
-            $itens = $this->buscarItens($id);
-            
-            // Atualiza status da venda
-            $stmt = $this->pdo->prepare("UPDATE vendas SET status = 'cancelada' WHERE id = :id");
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $stmt->execute();
-            
-            // Estorna estoque dos produtos
-            foreach ($itens as $item) {
-                // Registra movimentação de estoque (entrada por cancelamento)
-                $this->produto->registrarMovimentacao([
-                    'produto_id' => $item['produto_id'],
-                    'tipo' => 'entrada',
-                    'quantidade' => $item['quantidade'],
-                    'observacao' => 'Cancelamento da Venda #' . $id,
-                    'origem' => 'devolucao',
-                    'documento_id' => $id
-                ]);
-            }
-            
-            // Finaliza transação
-            $this->pdo->commit();
-            return true;
-            
-        } catch (Exception $e) {
-            // Desfaz transação em caso de erro
-            $this->pdo->rollBack();
-            error_log($e->getMessage());
-            return false;
-        }
-    }
-
-    // Relatório de vendas por período
-    public function relatorioVendasPorPeriodo($data_inicio, $data_fim) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                v.id, 
-                DATE_FORMAT(v.data_venda, '%d/%m/%Y') AS data, 
-                v.valor_total, 
-                v.desconto,
-                v.forma_pagamento,
-                u.nome AS vendedor,
-                c.nome AS cliente
-            FROM vendas v
-            LEFT JOIN usuarios u ON v.usuario_id = u.id
-            LEFT JOIN clientes c ON v.cliente_id = c.id
-            WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
-            AND v.status = 'finalizada'
-            ORDER BY v.data_venda
-        ");
-        
-        $stmt->bindParam(':data_inicio', $data_inicio);
-        $stmt->bindParam(':data_fim', $data_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de vendas por vendedor
-    public function relatorioVendasPorVendedor($data_inicio, $data_fim) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                u.nome AS vendedor,
-                COUNT(v.id) AS total_vendas,
-                SUM(v.valor_total) AS valor_total
-            FROM vendas v
-            LEFT JOIN usuarios u ON v.usuario_id = u.id
-            WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
-            AND v.status = 'finalizada'
-            GROUP BY v.usuario_id
-            ORDER BY valor_total DESC
-        ");
-        
-        $stmt->bindParam(':data_inicio', $data_inicio);
-        $stmt->bindParam(':data_fim', $data_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de produtos mais vendidos
-    public function relatorioProdutosMaisVendidos($data_inicio, $data_fim) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                p.codigo,
-                p.nome AS produto,
-                SUM(i.quantidade) AS quantidade_total,
-                SUM(i.subtotal) AS valor_total
-            FROM itens_venda i
-            LEFT JOIN produtos p ON i.produto_id = p.id
-            LEFT JOIN vendas v ON i.venda_id = v.id
-            WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
-            AND v.status = 'finalizada'
-            GROUP BY i.produto_id
-            ORDER BY quantidade_total DESC
-        ");
-        
-        $stmt->bindParam(':data_inicio', $data_inicio);
-        $stmt->bindParam(':data_fim', $data_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-}
-
-// Classe para gerenciar compras (entrada de produtos)
-class Compra {
-    private $pdo;
-    private $produto;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-        $this->produto = new Produto($pdo);
-    }
-
-    // Listar todas as compras
-    public function listar() {
-        $stmt = $this->pdo->query("
-            SELECT c.*, f.nome AS fornecedor_nome, u.nome AS usuario_nome, 
-            DATE_FORMAT(c.data_compra, '%d/%m/%Y') AS data_formatada
-            FROM compras c
-            LEFT JOIN fornecedores f ON c.fornecedor_id = f.id
-            LEFT JOIN usuarios u ON c.usuario_id = u.id
-            ORDER BY c.data_compra DESC
-        ");
-        return $stmt->fetchAll();
-    }
-
-    // Buscar compra por ID
-    public function buscarPorId($id) {
-        $stmt = $this->pdo->prepare("
-            SELECT c.*, f.nome AS fornecedor_nome, u.nome AS usuario_nome,
-            DATE_FORMAT(c.data_compra, '%d/%m/%Y') AS data_formatada
-            FROM compras c
-            LEFT JOIN fornecedores f ON c.fornecedor_id = f.id
-            LEFT JOIN usuarios u ON c.usuario_id = u.id
-            WHERE c.id = :id LIMIT 1
-        ");
-        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetch();
-    }
-
-    // Buscar itens de uma compra
-    public function buscarItens($compra_id) {
-        $stmt = $this->pdo->prepare("
-            SELECT i.*, p.nome AS produto_nome, p.codigo AS produto_codigo
-            FROM itens_compra i
-            LEFT JOIN produtos p ON i.produto_id = p.id
-            WHERE i.compra_id = :compra_id
-            ORDER BY i.id
-        ");
-        $stmt->bindParam(':compra_id', $compra_id, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Adicionar compra
-    public function adicionar($dados) {
-        try {
-            // Inicia transação
-            $this->pdo->beginTransaction();
-            
-            // Insere a compra
-            $stmt = $this->pdo->prepare("
-                INSERT INTO compras 
-                (fornecedor_id, usuario_id, valor_total, status, observacoes) 
-                VALUES 
-                (:fornecedor_id, :usuario_id, :valor_total, :status, :observacoes)
-            ");
-            
-            $stmt->bindParam(':fornecedor_id', $dados['fornecedor_id'], PDO::PARAM_INT);
-            $stmt->bindParam(':usuario_id', $_SESSION['usuario_id'], PDO::PARAM_INT);
-            $stmt->bindParam(':valor_total', $dados['valor_total']);
-            $stmt->bindParam(':status', $dados['status']);
-            $stmt->bindParam(':observacoes', $dados['observacoes']);
-            
-            $stmt->execute();
-            $compra_id = $this->pdo->lastInsertId();
-            
-            // Insere os itens da compra
-            foreach ($dados['itens'] as $item) {
-                $stmt = $this->pdo->prepare("
-                    INSERT INTO itens_compra 
-                    (compra_id, produto_id, quantidade, preco_unitario, subtotal) 
-                    VALUES 
-                    (:compra_id, :produto_id, :quantidade, :preco_unitario, :subtotal)
-                ");
-                
-                $subtotal = $item['quantidade'] * $item['preco_unitario'];
-                
-                $stmt->bindParam(':compra_id', $compra_id, PDO::PARAM_INT);
-                $stmt->bindParam(':produto_id', $item['produto_id'], PDO::PARAM_INT);
-                $stmt->bindParam(':quantidade', $item['quantidade'], PDO::PARAM_INT);
-                $stmt->bindParam(':preco_unitario', $item['preco_unitario']);
-                $stmt->bindParam(':subtotal', $subtotal);
-                
-                $stmt->execute();
-                
-                // Atualiza preço de custo do produto
-                $stmt = $this->pdo->prepare("UPDATE produtos SET preco_custo = :preco_custo WHERE id = :id");
-                $stmt->bindParam(':id', $item['produto_id'], PDO::PARAM_INT);
-                $stmt->bindParam(':preco_custo', $item['preco_unitario']);
-                $stmt->execute();
-                
-                // Registra movimentação de estoque
-                if ($dados['status'] == 'finalizada') {
-                    $this->produto->registrarMovimentacao([
-                        'produto_id' => $item['produto_id'],
-                        'tipo' => 'entrada',
-                        'quantidade' => $item['quantidade'],
-                        'observacao' => 'Compra #' . $compra_id,
-                        'origem' => 'compra',
-                        'documento_id' => $compra_id
-                    ]);
-                }
-            }
-            
-            // Finaliza transação
-            $this->pdo->commit();
-            return $compra_id;
-            
-        } catch (Exception $e) {
-            // Desfaz transação em caso de erro
-            $this->pdo->rollBack();
-            error_log($e->getMessage());
-            return false;
-        }
-    }
-
-    // Finalizar compra pendente
-    public function finalizar($id) {
-        try {
-            // Inicia transação
-            $this->pdo->beginTransaction();
-            
-            // Busca compra
-            $compra = $this->buscarPorId($id);
-            if ($compra['status'] != 'pendente') {
-                throw new Exception("Esta compra não está pendente.");
-            }
-            
-            // Atualiza status da compra
-            $stmt = $this->pdo->prepare("UPDATE compras SET status = 'finalizada' WHERE id = :id");
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $stmt->execute();
-            
-            // Busca itens da compra
-            $itens = $this->buscarItens($id);
-            
-            // Adiciona estoque
-            foreach ($itens as $item) {
-                $this->produto->registrarMovimentacao([
-                    'produto_id' => $item['produto_id'],
-                    'tipo' => 'entrada',
-                    'quantidade' => $item['quantidade'],
-                    'observacao' => 'Finalização da Compra #' . $id,
-                    'origem' => 'compra',
-                    'documento_id' => $id
-                ]);
-            }
-            
-            // Finaliza transação
-            $this->pdo->commit();
-            return true;
-            
-        } catch (Exception $e) {
-            // Desfaz transação em caso de erro
-            $this->pdo->rollBack();
-            error_log($e->getMessage());
-            return false;
-        }
-    }
-
-    // Cancelar compra
-    public function cancelar($id) {
-        try {
-            // Inicia transação
-            $this->pdo->beginTransaction();
-            
-            // Busca compra
-            $compra = $this->buscarPorId($id);
-            if ($compra['status'] == 'cancelada') {
-                throw new Exception("Esta compra já está cancelada.");
-            }
-            
-            // Atualiza status da compra
-            $stmt = $this->pdo->prepare("UPDATE compras SET status = 'cancelada' WHERE id = :id");
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $stmt->execute();
-            
-            // Se a compra estava finalizada, estorna o estoque
-            if ($compra['status'] == 'finalizada') {
-                // Busca itens da compra
-                $itens = $this->buscarItens($id);
-                
-                // Remove estoque
-                foreach ($itens as $item) {
-                    $this->produto->registrarMovimentacao([
-                        'produto_id' => $item['produto_id'],
-                        'tipo' => 'saida',
-                        'quantidade' => $item['quantidade'],
-                        'observacao' => 'Cancelamento da Compra #' . $id,
-                        'origem' => 'ajuste_manual',
-                        'documento_id' => $id
-                    ]);
-                }
-            }
-            
-            // Finaliza transação
-            $this->pdo->commit();
-            return true;
-            
-        } catch (Exception $e) {
-            // Desfaz transação em caso de erro
-            $this->pdo->rollBack();
-            error_log($e->getMessage());
-            return false;
-        }
-    }
-}
-
-// Classe para gerenciar relatórios
-class Relatorio {
-    private $pdo;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Relatório de estoque atual
-    public function estoqueAtual() {
-        $stmt = $this->pdo->query("
-            SELECT 
-                p.id,
-                p.codigo,
-                p.nome,
-                c.nome AS categoria,
-                p.estoque_atual,
-                p.estoque_minimo,
-                p.preco_custo,
-                p.preco_venda,
-                (p.preco_venda - p.preco_custo) AS lucro,
-                ((p.preco_venda - p.preco_custo) / p.preco_custo * 100) AS margem_lucro,
-                (p.estoque_atual * p.preco_custo) AS valor_estoque
-            FROM produtos p
-            LEFT JOIN categorias c ON p.categoria_id = c.id
-            WHERE p.ativo = TRUE
-            ORDER BY p.nome
-        ");
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de produtos abaixo do estoque mínimo
-    public function produtosAbaixoEstoqueMinimo() {
-        $stmt = $this->pdo->query("
-            SELECT 
-                p.id,
-                p.codigo,
-                p.nome,
-                c.nome AS categoria,
-                p.estoque_atual,
-                p.estoque_minimo,
-                (p.estoque_minimo - p.estoque_atual) AS quantidade_comprar
-            FROM produtos p
-            LEFT JOIN categorias c ON p.categoria_id = c.id
-            WHERE p.ativo = TRUE AND p.estoque_atual < p.estoque_minimo
-            ORDER BY quantidade_comprar DESC
-        ");
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de faturamento diário
-    public function faturamentoDiario($mes, $ano) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                DAY(data_venda) AS dia,
-                COUNT(id) AS total_vendas,
-                SUM(valor_total) AS valor_total
-            FROM vendas
-            WHERE MONTH(data_venda) = :mes AND YEAR(data_venda) = :ano
-            AND status = 'finalizada'
-            GROUP BY DAY(data_venda)
-            ORDER BY dia
-        ");
-        
-        $stmt->bindParam(':mes', $mes, PDO::PARAM_INT);
-        $stmt->bindParam(':ano', $ano, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de faturamento mensal
-    public function faturamentoMensal($ano) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                MONTH(data_venda) AS mes,
-                COUNT(id) AS total_vendas,
-                SUM(valor_total) AS valor_total
-            FROM vendas
-            WHERE YEAR(data_venda) = :ano
-            AND status = 'finalizada'
-            GROUP BY MONTH(data_venda)
-            ORDER BY mes
-        ");
-        
-        $stmt->bindParam(':ano', $ano, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de produtos mais vendidos
-    public function produtosMaisVendidos($data_inicio, $data_fim, $limite = 10) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                p.codigo,
-                p.nome,
-                SUM(i.quantidade) AS quantidade_total,
-                SUM(i.subtotal) AS valor_total
-            FROM itens_venda i
-            LEFT JOIN produtos p ON i.produto_id = p.id
-            LEFT JOIN vendas v ON i.venda_id = v.id
-            WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
-            AND v.status = 'finalizada'
-            GROUP BY i.produto_id
-            ORDER BY quantidade_total DESC
-            LIMIT :limite
-        ");
-        
-        $stmt->bindParam(':data_inicio', $data_inicio);
-        $stmt->bindParam(':data_fim', $data_fim);
-        $stmt->bindParam(':limite', $limite, PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de movimentações de estoque
-    public function movimentacoesEstoque($produto_id = null, $data_inicio = null, $data_fim = null) {
-        $sql = "
-            SELECT 
-                m.id,
-                p.codigo AS produto_codigo,
-                p.nome AS produto_nome,
-                u.nome AS usuario_nome,
-                m.tipo,
-                m.quantidade,
-                m.origem,
-                DATE_FORMAT(m.data_movimentacao, '%d/%m/%Y %H:%i') AS data_formatada,
-                m.observacao
-            FROM movimentacoes_estoque m
-            LEFT JOIN produtos p ON m.produto_id = p.id
-            LEFT JOIN usuarios u ON m.usuario_id = u.id
-            WHERE 1=1
-        ";
-        
-        $params = [];
-        
-        if ($produto_id) {
-            $sql .= " AND m.produto_id = :produto_id";
-            $params[':produto_id'] = $produto_id;
-        }
-        
-        if ($data_inicio) {
-            $sql .= " AND m.data_movimentacao >= :data_inicio";
-            $params[':data_inicio'] = $data_inicio;
-        }
-        
-        if ($data_fim) {
-            $sql .= " AND m.data_movimentacao <= :data_fim";
-            $params[':data_fim'] = $data_fim;
-        }
-        
-        $sql .= " ORDER BY m.data_movimentacao DESC";
-        
-        $stmt = $this->pdo->prepare($sql);
-        
-        foreach ($params as $param => $value) {
-            $stmt->bindValue($param, $value);
-        }
-        
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-
-    // Relatório de lucratividade
-    public function lucratividade($data_inicio, $data_fim) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                v.id AS venda_id,
-                DATE_FORMAT(v.data_venda, '%d/%m/%Y') AS data,
-                v.valor_total AS receita,
-                (
-                    SELECT SUM(iv.quantidade * p.preco_custo)
-                    FROM itens_venda iv
-                    LEFT JOIN produtos p ON iv.produto_id = p.id
-                    WHERE iv.venda_id = v.id
-                ) AS custo,
-                (
-                    v.valor_total - (
-                        SELECT SUM(iv.quantidade * p.preco_custo)
-                        FROM itens_venda iv
-                        LEFT JOIN produtos p ON iv.produto_id = p.id
-                        WHERE iv.venda_id = v.id
-                    )
-                ) AS lucro,
-                (
-                    (v.valor_total - (
-                        SELECT SUM(iv.quantidade * p.preco_custo)
-                        FROM itens_venda iv
-                        LEFT JOIN produtos p ON iv.produto_id = p.id
-                        WHERE iv.venda_id = v.id
-                    )) / v.valor_total * 100
-                ) AS margem_lucro
-            FROM vendas v
-            WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
-            AND v.status = 'finalizada'
-            ORDER BY v.data_venda
-        ");
-        
-        $stmt->bindParam(':data_inicio', $data_inicio);
-        $stmt->bindParam(':data_fim', $data_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    }
-}
-
-// Classe para gerenciar logs do sistema
-class LogSistema {
-    private $pdo;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Registrar log
-    public function registrar($acao, $detalhes = '') {
-        // Verificar se o usuário está logado
-        if (!isset($_SESSION['usuario_id']) && !isset($_SESSION['usuario_id_temp'])) {
-            // Se nenhum usuário estiver logado e não for um login temporário, não registra
-            return false;
-        }
-
-        // Usar ID e nome de usuário da sessão ou temporários
-        $usuario_id = $_SESSION['usuario_id_temp'] ?? $_SESSION['usuario_id'] ?? 0;
-        $usuario_nome = $_SESSION['usuario_nome_temp'] ?? $_SESSION['usuario_nome'] ?? 'Sistema';
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-
-        $stmt = $this->pdo->prepare("
-            INSERT INTO logs_sistema 
-            (usuario_id, usuario_nome, acao, detalhes, ip) 
-            VALUES 
-            (:usuario_id, :usuario_nome, :acao, :detalhes, :ip)
-        ");
-        
-        $stmt->bindParam(':usuario_id', $usuario_id);
-        $stmt->bindParam(':usuario_nome', $usuario_nome);
-        $stmt->bindParam(':acao', $acao);
-        $stmt->bindParam(':detalhes', $detalhes);
-        $stmt->bindParam(':ip', $ip);
-        
-        return $stmt->execute();
-    }
-
-    // Listar logs
-    public function listar($limite = 100, $offset = 0) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                id,
-                usuario_nome,
-                acao,
-                detalhes,
-                ip,
-                DATE_FORMAT(data_hora, '%d/%m/%Y %H:%i:%s') AS data_formatada
-            FROM logs_sistema
-            ORDER BY data_hora DESC
-            LIMIT :limite OFFSET :offset
-        ");
-        
-        $stmt->bindParam(':limite', $limite, PDO::PARAM_INT);
-        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        
-        return $stmt->fetchAll();
-    }
-
-    // Excluir logs antigos
-    public function limparAntigos($dias = 30) {
-        // Calcula a data limite (hoje - dias)
-        $data_limite = date('Y-m-d H:i:s', strtotime("-{$dias} days"));
-        
-        $stmt = $this->pdo->prepare("DELETE FROM logs_sistema WHERE data_hora < :data_limite");
-        $stmt->bindParam(':data_limite', $data_limite);
-        
-        return $stmt->execute();
-    }
-    
-    // Contar total de logs
-    public function contarTotal() {
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM logs_sistema");
-        return $stmt->fetchColumn();
     }
 }
