@@ -1810,6 +1810,20 @@ class LogSistema {
         
         return $stmt->execute();
     }
+    // Limpar todos os logs
+    public function limparTodos() {
+        try {
+        $stmt = $this->pdo->prepare("DELETE FROM logs_sistema");
+        $resultado = $stmt->execute();
+        
+        return $resultado;
+    } catch (Exception $e) {
+        if (function_exists('error_log')) {
+            error_log("Erro ao limpar todos os logs: " . $e->getMessage());
+        }
+        return false;
+    }
+}
     
     // Contar total de logs
     public function contarTotal() {

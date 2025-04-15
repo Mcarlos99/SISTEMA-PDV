@@ -58,26 +58,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['salvar_empresa'])) {
 
 // Processar formulário de configurações do sistema
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['salvar_configuracoes'])) {
-    // Preparar dados para atualização
-    $dados = [
-        'id' => $dados_sistema['id'],
-        'itens_por_pagina' => $_POST['itens_por_pagina'],
-        'tema' => $_POST['tema'],
-        'moeda' => $_POST['moeda'],
-        'formato_data' => $_POST['formato_data'],
-        'estoque_negativo' => isset($_POST['estoque_negativo']) ? 1 : 0,
-        'alerta_estoque' => isset($_POST['alerta_estoque']) ? 1 : 0,
-        'impressao_automatica' => isset($_POST['impressao_automatica']) ? 1 : 0
-    ];
-    
-    // Atualizar dados no banco de dados
-    if ($config_sistema->atualizar($dados)) {
-        alerta('Configurações do sistema atualizadas com sucesso!', 'success');
+    try {
+        // Preparar dados para atualização
+        $estoque_negativo = isset($_POST['estoque_negativo']) ? 1 : 0;
+        $alerta_estoque = isset($_POST['alerta_estoque']) ? 1 : 0;
+        $impressao_automatica = isset($_POST['impressao_automatica']) ? 1 : 0;
         
-        // Recarregar dados atualizados
-        $dados_sistema = $config_sistema->buscar();
-    } else {
-        alerta('Erro ao atualizar configurações do sistema!', 'danger');
+        $sql = "UPDATE configuracoes_sistema SET 
+            itens_por_pagina = :itens_por_pagina,
+            tema = :tema,
+            moeda = :moeda,
+            formato_data = :formato_data,
+            estoque_negativo = :estoque_negativo,
+            alerta_estoque = :alerta_estoque,
+            impressao_automatica = :impressao_automatica
+            WHERE id = :id";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':id', $dados_sistema['id'], PDO::PARAM_INT);
+        $stmt->bindValue(':itens_por_pagina', $_POST['itens_por_pagina'], PDO::PARAM_INT);
+        $stmt->bindValue(':tema', $_POST['tema'], PDO::PARAM_STR);
+        $stmt->bindValue(':moeda', $_POST['moeda'], PDO::PARAM_STR);
+        $stmt->bindValue(':formato_data', $_POST['formato_data'], PDO::PARAM_STR);
+        $stmt->bindValue(':estoque_negativo', $estoque_negativo, PDO::PARAM_INT);
+        $stmt->bindValue(':alerta_estoque', $alerta_estoque, PDO::PARAM_INT);
+        $stmt->bindValue(':impressao_automatica', $impressao_automatica, PDO::PARAM_INT);
+        
+        // Executar a consulta
+        $resultado = $stmt->execute();
+        
+        if ($resultado) {
+            alerta('Configurações do sistema atualizadas com sucesso!', 'success');
+            
+            // Recarregar dados atualizados
+            $dados_sistema = $config_sistema->buscar();
+        } else {
+            alerta('Erro ao atualizar configurações do sistema!', 'danger');
+        }
+    } catch (Exception $e) {
+        alerta('Erro ao atualizar configurações: ' . $e->getMessage(), 'danger');
     }
     
     // Redirecionar para evitar reenvio
@@ -98,6 +117,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['limpar_logs'])) {
     } else {
         alerta('Erro ao remover logs antigos!', 'danger');
     }
+}
+// Processar limpeza total de logs
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['limpar_todos_logs'])) {
+    // Executar a limpeza total dos logs
+    if ($log->limparTodos()) {
+        // Registrar a ação nos logs
+        $log->registrar('Limpeza', "Todos os logs foram apagados");
+        alerta("Todos os logs foram removidos com sucesso!", 'success');
+    } else {
+        alerta('Erro ao remover todos os logs!', 'danger');
+    }
+    
+    // Redirecionar para evitar reenvio do formulário
+    header('Location: configuracoes.php#logs');
+    exit;
 }
 
 // Template da página
@@ -265,25 +299,25 @@ include 'header.php';
                         </div>
                         
                         <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="estoque_negativo" name="estoque_negativo" <?php echo $dados_sistema['estoque_negativo'] ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="estoque_negativo">Bloquear venda quando estoque for insuficiente</label>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="alerta_estoque" name="alerta_estoque" <?php echo $dados_sistema['alerta_estoque'] ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="alerta_estoque">Mostrar alerta de estoque baixo no painel</label>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="impressao_automatica" name="impressao_automatica" <?php echo $dados_sistema['impressao_automatica'] ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="impressao_automatica">Impressão automática de comprovante após venda</label>
-                            </div>
-                        </div>
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="estoque_negativo" name="estoque_negativo" value="1" <?php echo $dados_sistema['estoque_negativo'] == 1 ? 'checked' : ''; ?>>
+        <label class="form-check-label" for="estoque_negativo">Bloquear venda quando estoque for insuficiente</label>
+    </div>
+</div>
+
+<div class="mb-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="alerta_estoque" name="alerta_estoque" value="1" <?php echo $dados_sistema['alerta_estoque'] == 1 ? 'checked' : ''; ?>>
+        <label class="form-check-label" for="alerta_estoque">Mostrar alerta de estoque baixo no painel</label>
+    </div>
+</div>
+
+<div class="mb-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="impressao_automatica" name="impressao_automatica" value="1" <?php echo $dados_sistema['impressao_automatica'] == 1 ? 'checked' : ''; ?>>
+        <label class="form-check-label" for="impressao_automatica">Impressão automática de comprovante após venda</label>
+    </div>
+</div>
                         
                         <div class="text-end">
                             <button type="submit" name="salvar_configuracoes" class="btn btn-primary">
@@ -295,72 +329,79 @@ include 'header.php';
             </div>
         </div>
         
-        <!-- Tab Logs -->
-        <div class="tab-pane fade" id="logs" role="tabpanel" aria-labelledby="logs-tab">
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0">Logs do Sistema</h5>
-                    <form method="post" action="" class="d-inline-block">
-                        <div class="input-group">
-                            <select name="dias_manter" class="form-select form-select-sm">
-                                <option value="7">Mais de 7 dias</option>
-                                <option value="15">Mais de 15 dias</option>
-                                <option value="30" selected>Mais de 30 dias</option>
-                                <option value="60">Mais de 60 dias</option>
-                                <option value="90">Mais de 90 dias</option>
-                            </select>
-                            <button type="submit" name="limpar_logs" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza que deseja limpar os logs antigos?')">
-                                <i class="fas fa-trash"></i> Limpar Logs Antigos
-                            </button>
-                        </div>
-                    </form>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover datatable">
-                            <thead>
-                                <tr>
-                                    <th>Data/Hora</th>
-                                    <th>Usuário</th>
-                                    <th>Ação</th>
-                                    <th>IP</th>
-                                    <th>Detalhes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                // Buscar logs reais do banco de dados
-                                $logs = $log->listar(100);
-                                
-                                if (count($logs) > 0) {
-                                    foreach ($logs as $log_item) {
-                                        echo '<tr>';
-                                        echo '<td>'.$log_item['data_formatada'].'</td>';
-                                        echo '<td>'.$log_item['usuario_nome'].'</td>';
-                                        echo '<td>'.$log_item['acao'].'</td>';
-                                        echo '<td>'.$log_item['ip'].'</td>';
-                                        echo '<td>'.$log_item['detalhes'].'</td>';
-                                        echo '</tr>';
-                                    }
-                                } else {
-                                    // Se não existirem logs, mostrar exemplos
-                                    ?>
-                                    <tr>
-                                        <td><?php echo date('d/m/Y H:i:s'); ?></td>
-                                        <td><?php echo $_SESSION['usuario_nome']; ?></td>
-                                        <td>Acesso</td>
-                                        <td><?php echo $_SERVER['REMOTE_ADDR']; ?></td>
-                                        <td>Acessou a página de configurações</td>
-                                    </tr>
-                                    <?php
-                                }
-                                ?>
-                            </tbody>
-                        </table>
+<!-- Tab Logs -->
+<div class="tab-pane fade" id="logs" role="tabpanel" aria-labelledby="logs-tab">
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Logs do Sistema</h5>
+            <div class="d-flex">
+                <form method="post" action="" class="me-2">
+                    <div class="input-group">
+                        <select name="dias_manter" class="form-select form-select-sm">
+                            <option value="7">Mais de 7 dias</option>
+                            <option value="15">Mais de 15 dias</option>
+                            <option value="30" selected>Mais de 30 dias</option>
+                            <option value="60">Mais de 60 dias</option>
+                            <option value="90">Mais de 90 dias</option>
+                        </select>
+                        <button type="submit" name="limpar_logs" class="btn btn-warning btn-sm" onclick="return confirm('Tem certeza que deseja limpar os logs antigos?')">
+                            <i class="fas fa-broom"></i> Limpar Logs Antigos
+                        </button>
                     </div>
-                </div>
+                </form>
+                <form method="post" action="">
+                    <button type="submit" name="limpar_todos_logs" class="btn btn-danger btn-sm" onclick="return confirm('ATENÇÃO: Você está prestes a apagar TODOS os logs do sistema. Esta ação não pode ser desfeita. Deseja continuar?')">
+                        <i class="fas fa-trash"></i> Limpar Todos os Logs
+                    </button>
+                </form>
             </div>
         </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover datatable">
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Usuário</th>
+                            <th>Ação</th>
+                            <th>IP</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        // Buscar logs reais do banco de dados
+                        $logs = $log->listar(100);
+                        
+                        if (count($logs) > 0) {
+                            foreach ($logs as $log_item) {
+                                echo '<tr>';
+                                echo '<td>'.$log_item['data_formatada'].'</td>';
+                                echo '<td>'.$log_item['usuario_nome'].'</td>';
+                                echo '<td>'.$log_item['acao'].'</td>';
+                                echo '<td>'.$log_item['ip'].'</td>';
+                                echo '<td>'.$log_item['detalhes'].'</td>';
+                                echo '</tr>';
+                            }
+                        } else {
+                            // Se não existirem logs, mostrar exemplos
+                            ?>
+                            <tr>
+                                <td><?php echo date('d/m/Y H:i:s'); ?></td>
+                                <td><?php echo $_SESSION['usuario_nome']; ?></td>
+                                <td>Acesso</td>
+                                <td><?php echo $_SERVER['REMOTE_ADDR']; ?></td>
+                                <td>Acessou a página de configurações</td>
+                            </tr>
+                            <?php
+                        }
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
         
         <!-- Tab Sobre -->
         <div class="tab-pane fade" id="sobre" role="tabpanel" aria-labelledby="sobre-tab">
@@ -451,7 +492,7 @@ include 'header.php';
                     <div class="mt-4 text-center">
                         <h5>Licença e Suporte</h5>
                         <p>Este sistema está licenciado para uso exclusivo de sua empresa.<br>
-                        Para obter suporte técnico, entre em contato pelo e-mail: suporte@sistemaspdv.com</p>
+                        Para obter suporte técnico, entre em contato pelo e-mail: maurocarlos.ti@gmail.com</p>
                         <p class="text-muted">Copyright &copy; <?php echo date('Y'); ?> | Todos os direitos reservados.</p>
                     </div>
                 </div>
