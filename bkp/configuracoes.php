@@ -56,35 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['salvar_empresa'])) {
     exit;
 }
 
-// Processar formulário de configurações do sistema
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['salvar_configuracoes'])) {
-    // Preparar dados para atualização
-    $dados = [
-        'id' => $dados_sistema['id'],
-        'itens_por_pagina' => $_POST['itens_por_pagina'],
-        'tema' => $_POST['tema'],
-        'moeda' => $_POST['moeda'],
-        'formato_data' => $_POST['formato_data'],
-        'estoque_negativo' => isset($_POST['estoque_negativo']) ? 1 : 0,
-        'alerta_estoque' => isset($_POST['alerta_estoque']) ? 1 : 0,
-        'impressao_automatica' => isset($_POST['impressao_automatica']) ? 1 : 0
-    ];
-    
-    // Atualizar dados no banco de dados
-    if ($config_sistema->atualizar($dados)) {
-        alerta('Configurações do sistema atualizadas com sucesso!', 'success');
-        
-        // Recarregar dados atualizados
-        $dados_sistema = $config_sistema->buscar();
-    } else {
-        alerta('Erro ao atualizar configurações do sistema!', 'danger');
-    }
-    
-    // Redirecionar para evitar reenvio
-    header('Location: configuracoes.php#sistema');
-    exit;
-}
-
 // Processar limpeza de logs
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['limpar_logs'])) {
     // Definir quantos dias de logs manter
@@ -229,18 +200,18 @@ include 'header.php';
                             <div class="col-md-6">
                                 <label for="itens_por_pagina" class="form-label">Itens por Página</label>
                                 <select class="form-select" id="itens_por_pagina" name="itens_por_pagina">
-                                    <option value="10" <?php echo $dados_sistema['itens_por_pagina'] == 10 ? 'selected' : ''; ?>>10</option>
-                                    <option value="25" <?php echo $dados_sistema['itens_por_pagina'] == 25 ? 'selected' : ''; ?>>25</option>
-                                    <option value="50" <?php echo $dados_sistema['itens_por_pagina'] == 50 ? 'selected' : ''; ?>>50</option>
-                                    <option value="100" <?php echo $dados_sistema['itens_por_pagina'] == 100 ? 'selected' : ''; ?>>100</option>
+                                    <option value="10">10</option>
+                                    <option value="25" selected>25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
                                 <label for="tema" class="form-label">Tema</label>
                                 <select class="form-select" id="tema" name="tema">
-                                    <option value="claro" <?php echo $dados_sistema['tema'] == 'claro' ? 'selected' : ''; ?>>Claro</option>
-                                    <option value="escuro" <?php echo $dados_sistema['tema'] == 'escuro' ? 'selected' : ''; ?>>Escuro</option>
-                                    <option value="sistema" <?php echo $dados_sistema['tema'] == 'sistema' ? 'selected' : ''; ?>>Seguir Sistema</option>
+                                    <option value="claro" selected>Claro</option>
+                                    <option value="escuro">Escuro</option>
+                                    <option value="sistema">Seguir Sistema</option>
                                 </select>
                             </div>
                         </div>
@@ -249,38 +220,38 @@ include 'header.php';
                             <div class="col-md-6">
                                 <label for="moeda" class="form-label">Moeda</label>
                                 <select class="form-select" id="moeda" name="moeda">
-                                    <option value="BRL" <?php echo $dados_sistema['moeda'] == 'BRL' ? 'selected' : ''; ?>>Real (R$)</option>
-                                    <option value="USD" <?php echo $dados_sistema['moeda'] == 'USD' ? 'selected' : ''; ?>>Dólar (US$)</option>
-                                    <option value="EUR" <?php echo $dados_sistema['moeda'] == 'EUR' ? 'selected' : ''; ?>>Euro (€)</option>
+                                    <option value="BRL" selected>Real (R$)</option>
+                                    <option value="USD">Dólar (US$)</option>
+                                    <option value="EUR">Euro (€)</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
                                 <label for="formato_data" class="form-label">Formato de Data</label>
                                 <select class="form-select" id="formato_data" name="formato_data">
-                                    <option value="d/m/Y" <?php echo $dados_sistema['formato_data'] == 'd/m/Y' ? 'selected' : ''; ?>>DD/MM/AAAA</option>
-                                    <option value="Y-m-d" <?php echo $dados_sistema['formato_data'] == 'Y-m-d' ? 'selected' : ''; ?>>AAAA-MM-DD</option>
-                                    <option value="m/d/Y" <?php echo $dados_sistema['formato_data'] == 'm/d/Y' ? 'selected' : ''; ?>>MM/DD/AAAA</option>
+                                    <option value="d/m/Y" selected>DD/MM/AAAA</option>
+                                    <option value="Y-m-d">AAAA-MM-DD</option>
+                                    <option value="m/d/Y">MM/DD/AAAA</option>
                                 </select>
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="estoque_negativo" name="estoque_negativo" <?php echo $dados_sistema['estoque_negativo'] ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="estoque_negativo" name="estoque_negativo" checked>
                                 <label class="form-check-label" for="estoque_negativo">Bloquear venda quando estoque for insuficiente</label>
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="alerta_estoque" name="alerta_estoque" <?php echo $dados_sistema['alerta_estoque'] ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="alerta_estoque" name="alerta_estoque" checked>
                                 <label class="form-check-label" for="alerta_estoque">Mostrar alerta de estoque baixo no painel</label>
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="impressao_automatica" name="impressao_automatica" <?php echo $dados_sistema['impressao_automatica'] ? 'checked' : ''; ?>>
+                                <input class="form-check-input" type="checkbox" id="impressao_automatica" name="impressao_automatica" checked>
                                 <label class="form-check-label" for="impressao_automatica">Impressão automática de comprovante após venda</label>
                             </div>
                         </div>

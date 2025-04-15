@@ -1,4 +1,6 @@
-﻿<?php
+    // Login de usuário
+    public function login($usuario, $senha) {
+        $stmt = $this->pdo->prepare("SELECT id, nome, usuario, senha, nivel FROM usuarios WHERE usuario = :usuario AND ativo = TRUE LIMIT<?php
 /*
  * Sistema PDV (Ponto de Venda)
  * 
@@ -79,6 +81,7 @@ function formatarDinheiro($valor) {
 function formatarData($data) {
     return date('d/m/Y', strtotime($data));
 }
+
 // Classe para tabelas do banco de dados
 class TabelasBD {
     private $pdo;
@@ -260,67 +263,6 @@ class TabelasBD {
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ");
-        
-        // Configurações da Empresa
-        $this->pdo->exec("
-            CREATE TABLE IF NOT EXISTS configuracoes_empresa (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                nome VARCHAR(100) NOT NULL,
-                razao_social VARCHAR(100) NOT NULL,
-                cnpj VARCHAR(20),
-                endereco TEXT,
-                cidade VARCHAR(100),
-                estado CHAR(2),
-                telefone VARCHAR(20),
-                email VARCHAR(100),
-                site VARCHAR(100),
-                logo VARCHAR(255),
-                atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        ");
-        
-        // Configurações do Sistema
-        $this->pdo->exec("
-            CREATE TABLE IF NOT EXISTS configuracoes_sistema (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                itens_por_pagina INT NOT NULL DEFAULT 25,
-                tema VARCHAR(20) NOT NULL DEFAULT 'claro',
-                moeda VARCHAR(10) NOT NULL DEFAULT 'BRL',
-                formato_data VARCHAR(20) NOT NULL DEFAULT 'd/m/Y',
-                estoque_negativo BOOLEAN NOT NULL DEFAULT TRUE,
-                alerta_estoque BOOLEAN NOT NULL DEFAULT TRUE,
-                impressao_automatica BOOLEAN NOT NULL DEFAULT TRUE,
-                atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        ");
-        
-        // Inserir configurações padrão do sistema se não existirem
-        $stmt = $this->pdo->prepare("SELECT id FROM configuracoes_sistema LIMIT 1");
-        $stmt->execute();
-        
-        if (!$stmt->fetch()) {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO configuracoes_sistema 
-                (itens_por_pagina, tema, moeda, formato_data, estoque_negativo, alerta_estoque, impressao_automatica) 
-                VALUES 
-                (25, 'claro', 'BRL', 'd/m/Y', TRUE, TRUE, TRUE)
-            ");
-            $stmt->execute();
-        }
-        
-        // Inserir configurações padrão da empresa se não existirem
-        $stmt = $this->pdo->prepare("SELECT id FROM configuracoes_empresa LIMIT 1");
-        $stmt->execute();
-        
-        if (!$stmt->fetch()) {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO configuracoes_empresa 
-                (nome, razao_social, cnpj, endereco, cidade, estado, telefone, email, site) 
-                VALUES 
-                ('Minha Empresa', 'Minha Empresa LTDA', '12.345.678/0001-90', 'Rua Exemplo, 123', 'São Paulo', 'SP', '(11) 1234-5678', 'contato@minhaempresa.com', 'www.minhaempresa.com')
-            ");
-            $stmt->execute();
-        }
 
         // Criar usuário admin padrão se não existir
         $stmt = $this->pdo->prepare("SELECT id FROM usuarios WHERE usuario = 'admin' LIMIT 1");
@@ -345,144 +287,7 @@ class TabelasBD {
         return true;
     }
 }
-// Classe para gerenciar configurações da empresa
-class ConfiguracaoEmpresa {
-    private $pdo;
 
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Buscar configurações da empresa
-    public function buscar() {
-        $stmt = $this->pdo->query("SELECT * FROM configuracoes_empresa LIMIT 1");
-        return $stmt->fetch();
-    }
-
-    // Atualizar configurações da empresa
-    public function atualizar($dados) {
-        $stmt = $this->pdo->prepare("
-            UPDATE configuracoes_empresa SET 
-            nome = :nome, 
-            razao_social = :razao_social, 
-            cnpj = :cnpj, 
-            endereco = :endereco, 
-            cidade = :cidade, 
-            estado = :estado, 
-            telefone = :telefone, 
-            email = :email, 
-            site = :site
-            WHERE id = :id
-        ");
-        
-        $stmt->bindParam(':id', $dados['id']);
-        $stmt->bindParam(':nome', $dados['nome']);
-        $stmt->bindParam(':razao_social', $dados['razao_social']);
-        $stmt->bindParam(':cnpj', $dados['cnpj']);
-        $stmt->bindParam(':endereco', $dados['endereco']);
-        $stmt->bindParam(':cidade', $dados['cidade']);
-        $stmt->bindParam(':estado', $dados['estado']);
-        $stmt->bindParam(':telefone', $dados['telefone']);
-        $stmt->bindParam(':email', $dados['email']);
-        $stmt->bindParam(':site', $dados['site']);
-        
-        $result = $stmt->execute();
-        
-        // Registrar no log do sistema
-        if ($result && isset($GLOBALS['log'])) {
-            $GLOBALS['log']->registrar('Configuração', "Informações da empresa atualizadas");
-        }
-        
-        return $result;
-    }
-
-    // Atualizar logo da empresa
-    public function atualizarLogo($arquivo_temp, $nome_arquivo) {
-        // Diretório para uploads
-        $diretorio_uploads = dirname(__FILE__) . '/uploads';
-        
-        // Cria o diretório se não existir
-        if (!file_exists($diretorio_uploads)) {
-            mkdir($diretorio_uploads, 0755, true);
-        }
-        
-        // Gera um nome único para o arquivo
-        $extensao = pathinfo($nome_arquivo, PATHINFO_EXTENSION);
-        $novo_nome = 'logo_' . date('YmdHis') . '.' . $extensao;
-        $caminho_destino = $diretorio_uploads . '/' . $novo_nome;
-        
-        // Move o arquivo para o diretório de uploads
-        if (move_uploaded_file($arquivo_temp, $caminho_destino)) {
-            // Atualiza o nome do arquivo no banco de dados
-            $stmt = $this->pdo->prepare("UPDATE configuracoes_empresa SET logo = :logo");
-            $stmt->bindParam(':logo', $novo_nome);
-            
-            $result = $stmt->execute();
-            
-            // Registrar no log do sistema
-            if ($result && isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar('Configuração', "Logo da empresa atualizada");
-            }
-            
-            return $result;
-        }
-        
-        return false;
-    }
-}
-
-// Classe para gerenciar configurações do sistema
-class ConfiguracaoSistema {
-    private $pdo;
-
-    public function __construct($pdo) {
-        $this->pdo = $pdo;
-    }
-
-    // Buscar configurações do sistema
-    public function buscar() {
-        $stmt = $this->pdo->query("SELECT * FROM configuracoes_sistema LIMIT 1");
-        return $stmt->fetch();
-    }
-
-    // Atualizar configurações do sistema
-    public function atualizar($dados) {
-        $stmt = $this->pdo->prepare("
-            UPDATE configuracoes_sistema SET 
-            itens_por_pagina = :itens_por_pagina, 
-            tema = :tema, 
-            moeda = :moeda, 
-            formato_data = :formato_data, 
-            estoque_negativo = :estoque_negativo, 
-            alerta_estoque = :alerta_estoque, 
-            impressao_automatica = :impressao_automatica
-            WHERE id = :id
-        ");
-        
-        // Converter checkbox para booleano
-        $estoque_negativo = isset($dados['estoque_negativo']) ? 1 : 0;
-        $alerta_estoque = isset($dados['alerta_estoque']) ? 1 : 0;
-        $impressao_automatica = isset($dados['impressao_automatica']) ? 1 : 0;
-        
-        $stmt->bindParam(':id', $dados['id']);
-        $stmt->bindParam(':itens_por_pagina', $dados['itens_por_pagina']);
-        $stmt->bindParam(':tema', $dados['tema']);
-        $stmt->bindParam(':moeda', $dados['moeda']);
-        $stmt->bindParam(':formato_data', $dados['formato_data']);
-        $stmt->bindParam(':estoque_negativo', $estoque_negativo);
-        $stmt->bindParam(':alerta_estoque', $alerta_estoque);
-        $stmt->bindParam(':impressao_automatica', $impressao_automatica);
-        
-        $result = $stmt->execute();
-        
-        // Registrar no log do sistema
-        if ($result && isset($GLOBALS['log'])) {
-            $GLOBALS['log']->registrar('Configuração', "Configurações do sistema atualizadas");
-        }
-        
-        return $result;
-    }
-}
 // Classe para gerenciar usuários
 class Usuario {
     private $pdo;
@@ -614,6 +419,7 @@ class Usuario {
         return $stmt->execute();
     }
 }
+
 // Classe para gerenciar produtos
 class Produto {
     private $pdo;
@@ -824,6 +630,7 @@ class Produto {
         return $stmt->fetchAll();
     }
 }
+
 // Classe para gerenciar categorias
 class Categoria {
     private $pdo;
@@ -978,6 +785,7 @@ class Cliente {
         return $stmt->execute();
     }
 }
+
 // Classe para gerenciar fornecedores
 class Fornecedor {
     private $pdo;
@@ -1120,6 +928,7 @@ class Venda {
         $stmt->execute();
         return $stmt->fetchAll();
     }
+
     // Adicionar venda
     public function adicionar($dados) {
         try {
@@ -1321,6 +1130,7 @@ class Venda {
         return $stmt->fetchAll();
     }
 }
+
 // Classe para gerenciar compras (entrada de produtos)
 class Compra {
     private $pdo;
@@ -1537,6 +1347,7 @@ class Compra {
         }
     }
 }
+
 // Classe para gerenciar relatórios
 class Relatorio {
     private $pdo;
