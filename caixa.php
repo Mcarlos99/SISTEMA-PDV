@@ -107,7 +107,8 @@ include 'header.php';
                             <div class="input-group">
                                 <span class="input-group-text">R$</span>
                                 <input type="text" class="form-control" id="valor_inicial" name="valor_inicial" required
-                                       value="0,00" data-mask-money>
+                                       value="0,00" data-mask-money
+                                       title="Use vírgula para separar os centavos.">
                             </div>
                         </div>
                     </div>
@@ -482,41 +483,83 @@ include 'header.php';
         const moneyInputs = document.querySelectorAll('[data-mask-money]');
         
         moneyInputs.forEach(function(input) {
+            // Seleciona o conteúdo ao focar
+            input.addEventListener('focus', function() {
+                setTimeout(() => this.select(), 10);
+            });
+            
+            // Trata a entrada do usuário sem formatação automática durante a digitação
             input.addEventListener('input', function(e) {
                 let value = e.target.value;
                 
-                // Remove caracteres não numéricos, exceto vírgula
+                // Remove qualquer caractere que não seja número ou vírgula
                 value = value.replace(/[^\d,]/g, '');
                 
-                // Garante apenas uma vírgula
+                // Limita a uma única vírgula
                 const parts = value.split(',');
                 if (parts.length > 2) {
                     value = parts[0] + ',' + parts.slice(1).join('');
                 }
                 
-                // Formata o número para ter sempre 2 casas decimais
-                if (value.includes(',')) {
+                // Atualiza o valor sem formatação automática
+                e.target.value = value;
+            });
+            
+            // Aplica a formatação completa quando o campo perde o foco
+            input.addEventListener('blur', function(e) {
+                let value = e.target.value;
+                
+                // Garante que tenha um valor
+                if (!value) {
+                    value = '0,00';
+                } 
+                
+                // Garante que tenha a vírgula e 2 casas decimais
+                if (!value.includes(',')) {
+                    value = value + ',00';
+                } else {
+                    const parts = value.split(',');
                     const decimal = parts[1] || '';
                     value = parts[0] + ',' + decimal.padEnd(2, '0').slice(0, 2);
-                } else if (value) {
-                    value = value + ',00';
                 }
                 
                 // Adiciona os separadores de milhar
-                if (value) {
-                    const parts = value.split(',');
-                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-                    value = parts.join(',');
-                }
+                const parts = value.split(',');
+                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                value = parts.join(',');
                 
                 e.target.value = value;
             });
             
-            // Já aplica a formatação ao carregar a página
-            const event = new Event('input', { bubbles: true });
-            input.dispatchEvent(event);
+            // Aplica a formatação inicial, mas apenas se o valor for o padrão
+            if (input.value === '0,00') {
+                const event = new Event('blur', { bubbles: true });
+                input.dispatchEvent(event);
+            }
         });
     });
 </script>
-
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Permite que o campo de valor inicial seja limpo ao receber foco
+    const valorInicial = document.getElementById('valor_inicial');
+    if (valorInicial) {
+        valorInicial.addEventListener('focus', function() {
+            if (this.value === '0,00') {
+                this.value = '';
+            }
+        });
+        
+        // Ao perder o foco, se estiver vazio, restaura o valor padrão
+        valorInicial.addEventListener('blur', function() {
+            if (this.value === '') {
+                this.value = '0,00';
+                // Dispara o evento input para formatar corretamente
+                const event = new Event('input', { bubbles: true });
+                this.dispatchEvent(event);
+            }
+        });
+    }
+});
+</script>
 <?php include 'footer.php'; ?>

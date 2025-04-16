@@ -1258,66 +1258,76 @@ class Produto {
     }
 
     // Adicionar produto
-    public function adicionar($dados) {
-        try {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO produtos 
-                (codigo, nome, descricao, preco_custo, preco_venda, estoque_atual, estoque_minimo, categoria_id, ativo) 
-                VALUES 
-                (:codigo, :nome, :descricao, :preco_custo, :preco_venda, :estoque_atual, :estoque_minimo, :categoria_id, :ativo)
-            ");
+// Adicionar produto
+public function adicionar($dados) {
+    try {
+        // Insere o produto no banco de dados (com o estoque já definido)
+        $stmt = $this->pdo->prepare("
+            INSERT INTO produtos 
+            (codigo, nome, descricao, preco_custo, preco_venda, estoque_atual, estoque_minimo, categoria_id, ativo) 
+            VALUES 
+            (:codigo, :nome, :descricao, :preco_custo, :preco_venda, :estoque_atual, :estoque_minimo, :categoria_id, :ativo)
+        ");
+        
+        $codigo = $dados['codigo'];
+        $nome = $dados['nome'];
+        $descricao = $dados['descricao'];
+        $preco_custo = $dados['preco_custo'];
+        $preco_venda = $dados['preco_venda'];
+        $estoque_atual = $dados['estoque_atual'];
+        $estoque_minimo = $dados['estoque_minimo'];
+        $categoria_id = $dados['categoria_id'];
+        $ativo = $dados['ativo'];
+        
+        $stmt->bindParam(':codigo', $codigo);
+        $stmt->bindParam(':nome', $nome);
+        $stmt->bindParam(':descricao', $descricao);
+        $stmt->bindParam(':preco_custo', $preco_custo);
+        $stmt->bindParam(':preco_venda', $preco_venda);
+        $stmt->bindParam(':estoque_atual', $estoque_atual, PDO::PARAM_INT);
+        $stmt->bindParam(':estoque_minimo', $estoque_minimo, PDO::PARAM_INT);
+        $stmt->bindParam(':categoria_id', $categoria_id, PDO::PARAM_INT);
+        $stmt->bindParam(':ativo', $ativo, PDO::PARAM_BOOL);
+        
+        $result = $stmt->execute();
+        
+        if ($result) {
+            // Registrar no log do sistema
+            $produto_id = $this->pdo->lastInsertId();
             
-            $codigo = $dados['codigo'];
-            $nome = $dados['nome'];
-            $descricao = $dados['descricao'];
-            $preco_custo = $dados['preco_custo'];
-            $preco_venda = $dados['preco_venda'];
-            $estoque_atual = $dados['estoque_atual'];
-            $estoque_minimo = $dados['estoque_minimo'];
-            $categoria_id = $dados['categoria_id'];
-            $ativo = $dados['ativo'];
-            
-            $stmt->bindParam(':codigo', $codigo);
-            $stmt->bindParam(':nome', $nome);
-            $stmt->bindParam(':descricao', $descricao);
-            $stmt->bindParam(':preco_custo', $preco_custo);
-            $stmt->bindParam(':preco_venda', $preco_venda);
-            $stmt->bindParam(':estoque_atual', $estoque_atual, PDO::PARAM_INT);
-            $stmt->bindParam(':estoque_minimo', $estoque_minimo, PDO::PARAM_INT);
-            $stmt->bindParam(':categoria_id', $categoria_id, PDO::PARAM_INT);
-            $stmt->bindParam(':ativo', $ativo, PDO::PARAM_BOOL);
-            
-            $result = $stmt->execute();
-            
-            if ($result) {
-                // Registrar movimentação inicial de estoque
-                $produto_id = $this->pdo->lastInsertId();
-                
-                // Registrar no log do sistema
-                if (isset($GLOBALS['log'])) {
-                    $GLOBALS['log']->registrar(
-                        'Produto', 
-                        "Produto {$dados['nome']} (ID: {$produto_id}) adicionado"
-                    );
-                }
-                
-                if ($dados['estoque_atual'] > 0) {
-                    $this->registrarMovimentacao([
-                        'produto_id' => $produto_id,
-                        'tipo' => 'entrada',
-                        'quantidade' => $dados['estoque_atual'],
-                        'observacao' => 'Estoque inicial',
-                        'origem' => 'ajuste_manual'
-                    ]);
-                }
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Produto', 
+                    "Produto {$dados['nome']} (ID: {$produto_id}) adicionado"
+                );
             }
             
-            return $result;
-        } catch (Exception $e) {
-            error_log("Erro ao adicionar produto: " . $e->getMessage());
-            return false;
+            // Registra a movimentação apenas para histórico, sem atualizar o estoque novamente
+            if ($dados['estoque_atual'] > 0) {
+                // Inserir diretamente na tabela de movimentações, sem chamar o método registrarMovimentacao
+                $usuario_id = $_SESSION['usuario_id'] ?? 1;
+                
+                $stmt_mov = $this->pdo->prepare("
+                    INSERT INTO movimentacoes_estoque 
+                    (produto_id, usuario_id, tipo, quantidade, observacao, origem, documento_id) 
+                    VALUES 
+                    (:produto_id, :usuario_id, 'entrada', :quantidade, 'Estoque inicial', 'ajuste_manual', NULL)
+                ");
+                
+                $stmt_mov->bindParam(':produto_id', $produto_id, PDO::PARAM_INT);
+                $stmt_mov->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+                $stmt_mov->bindParam(':quantidade', $estoque_atual, PDO::PARAM_INT);
+                
+                $stmt_mov->execute();
+            }
         }
+        
+        return $result;
+    } catch (Exception $e) {
+        error_log("Erro ao adicionar produto: " . $e->getMessage());
+        return false;
     }
+}
 
     // Atualizar produto
     public function atualizar($id, $dados) {

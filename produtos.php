@@ -2,6 +2,10 @@
 require_once 'config.php';
 verificarLogin();
 
+// Adicionar relatório de erros para depuração (pode remover em produção)
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Adicionar produto
@@ -19,10 +23,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         ];
         
         if ($produto->adicionar($dados)) {
-            alerta('Produto adicionado com sucesso!', 'success');
+            $_SESSION['alerta'] = ['tipo' => 'success', 'mensagem' => 'Produto adicionado com sucesso!'];
         } else {
-            alerta('Erro ao adicionar produto!', 'danger');
+            $_SESSION['alerta'] = ['tipo' => 'danger', 'mensagem' => 'Erro ao adicionar produto!'];
         }
+        
+        // Redirecionar para evitar reenvio do formulário
+        header('Location: produtos.php');
+        exit;
     }
     
     // Atualizar produto
@@ -41,26 +49,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         ];
         
         if ($produto->atualizar($id, $dados)) {
-            alerta('Produto atualizado com sucesso!', 'success');
+            $_SESSION['alerta'] = ['tipo' => 'success', 'mensagem' => 'Produto atualizado com sucesso!'];
         } else {
-            alerta('Erro ao atualizar produto!', 'danger');
+            $_SESSION['alerta'] = ['tipo' => 'danger', 'mensagem' => 'Erro ao atualizar produto!'];
         }
+        
+        // Redirecionar para evitar reenvio do formulário
+        header('Location: produtos.php');
+        exit;
     }
     
     // Excluir produto
     if (isset($_POST['excluir'])) {
         $id = $_POST['id'];
         
-        if ($produto->excluir($id)) {
-            alerta('Produto excluído com sucesso!', 'success');
+        if ($produto->excluir($id, true)) { // O segundo parâmetro 'true' indica exclusão permanente
+            $_SESSION['alerta'] = ['tipo' => 'success', 'mensagem' => 'Produto desativado com sucesso!'];
         } else {
-            alerta('Erro ao excluir produto!', 'danger');
+            $_SESSION['alerta'] = ['tipo' => 'danger', 'mensagem' => 'Erro ao desativar produto!'];
         }
+        
+        // Redirecionar para evitar reenvio do formulário
+        header('Location: produtos.php');
+        exit;
     }
-    
-    // Redirecionar para evitar reenvio do formulário
-    header('Location: produtos.php');
-    exit;
 }
 
 // Buscar produto para edição
@@ -68,11 +80,31 @@ $produto_edicao = null;
 if (isset($_GET['editar'])) {
     $id = $_GET['editar'];
     $produto_edicao = $produto->buscarPorId($id);
+    
+    // Se o produto não for encontrado, redirecionar
+    if (!$produto_edicao) {
+        $_SESSION['alerta'] = ['tipo' => 'danger', 'mensagem' => 'Produto não encontrado!'];
+        header('Location: produtos.php');
+        exit;
+    }
 }
 
 // Template da página
 $titulo_pagina = 'Gerenciamento de Produtos';
 include 'header.php';
+
+// Função para exibir alertas (caso não exista no config.php)
+if (!function_exists('exibirAlerta')) {
+    function exibirAlerta() {
+        if (isset($_SESSION['alerta'])) {
+            echo '<div class="alert alert-'.$_SESSION['alerta']['tipo'].' alert-dismissible fade show" role="alert">
+                    '.$_SESSION['alerta']['mensagem'].'
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                  </div>';
+            unset($_SESSION['alerta']);
+        }
+    }
+}
 ?>
 
 <div class="container-fluid">
@@ -113,7 +145,7 @@ include 'header.php';
                             echo '<td>'.($p['ativo'] ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-danger">Inativo</span>').'</td>';
                             echo '<td>
                                     <a href="?editar='.$p['id'].'" class="btn btn-sm btn-primary me-1"><i class="fas fa-edit"></i></a>
-                                    <a href="#" class="btn btn-sm btn-danger btn-excluir" data-id="'.$p['id'].'" data-nome="'.$p['nome'].'"><i class="fas fa-trash"></i></a>
+                                    <a href="#" class="btn btn-sm btn-warning btn-excluir" data-id="'.$p['id'].'" data-nome="'.$p['nome'].'"><i class="fas fa-ban"></i></a>
                                   </td>';
                             echo '</tr>';
                         }
@@ -216,18 +248,18 @@ include 'header.php';
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="modal-excluir-label">Excluir Produto</h5>
+                <h5 class="modal-title" id="modal-excluir-label">Desativar Produto</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Tem certeza que deseja excluir o produto <strong id="nome-produto-excluir"></strong>?</p>
-                <p class="text-danger">Esta ação não poderá ser desfeita.</p>
+                <p>Tem certeza que deseja desativar o produto <strong id="nome-produto-excluir"></strong>?</p>
+                <p class="text-info"><i class="fas fa-info-circle"></i> O produto será marcado como inativo, preservando seu histórico no sistema. Você poderá reativá-lo posteriormente se necessário.</p>
             </div>
             <div class="modal-footer">
                 <form method="post" action="">
                     <input type="hidden" name="id" id="id-produto-excluir">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" name="excluir" class="btn btn-danger">Confirmar Exclusão</button>
+                    <button type="submit" name="excluir" class="btn btn-warning">Confirmar Desativação</button>
                 </form>
             </div>
         </div>
@@ -235,8 +267,9 @@ include 'header.php';
 </div>
 
 <script>
-    // Abrir modal de edição automaticamente se tiver produto para editar
+    // Inicialização quando o DOM estiver carregado
     document.addEventListener('DOMContentLoaded', function() {
+        // Abrir modal de edição automaticamente se tiver produto para editar
         <?php if ($produto_edicao): ?>
         var modalProduto = new bootstrap.Modal(document.getElementById('modal-produto'));
         modalProduto.show();
@@ -255,6 +288,30 @@ include 'header.php';
                 modalExcluir.show();
             });
         }
+        
+        // Tratamento para fechamento do modal ao enviar o formulário
+        document.getElementById('form-produto').addEventListener('submit', function(e) {
+            // Garante que o modal seja fechado após o envio do formulário
+            setTimeout(function() {
+                var modalProduto = bootstrap.Modal.getInstance(document.getElementById('modal-produto'));
+                if (modalProduto) modalProduto.hide();
+            }, 100);
+        });
+        
+        // Formatação de campos de moeda
+        var camposPreco = document.querySelectorAll('#preco_custo, #preco_venda');
+        camposPreco.forEach(function(campo) {
+            campo.addEventListener('blur', function() {
+                var valor = this.value.replace(/\D/g, '');
+                valor = (parseFloat(valor) / 100).toFixed(2).replace('.', ',');
+                this.value = valor;
+            });
+            
+            campo.addEventListener('focus', function() {
+                var valor = this.value.replace(/\D/g, '');
+                if (valor === '') this.value = '';
+            });
+        });
     });
 </script>
 
