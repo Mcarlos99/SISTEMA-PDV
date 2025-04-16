@@ -553,60 +553,48 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-// Finalizar venda
-$("#btn-finalizar-venda").click(function() {
-    if (produtos.length === 0) {
-        alert("Adicione pelo menos um produto à venda!");
-        return;
-    }
-    
-    const recebido = parseFloat($("#recebido").val()) || 0;
-    if (recebido < total && $("#forma-pagamento").val() === 'dinheiro') {
-        alert("O valor recebido é menor que o total da venda!");
-        return;
-    }
-    
-    const venda = {
-        cliente_id: $("#cliente").val() || null,
-        forma_pagamento: $("#forma-pagamento").val(),
-        valor_total: total,
-        desconto: desconto,
-        observacoes: $("#observacoes").val(),
-        itens: []
-    };
-    
-    for (let i = 0; i < produtos.length; i++) {
-        venda.itens.push({
-            produto_id: produtos[i].id,
-            quantidade: produtos[i].quantidade,
-            preco_unitario: produtos[i].preco_venda
-        });
-    }
-    
-    console.log("Enviando dados da venda:", venda);
-    
-    $.ajax({
-        url: 'ajax_pdv.php',
-        type: 'POST',
-        data: {
-            acao: 'finalizar_venda',
-            venda: JSON.stringify(venda)
-        },
-        dataType: 'text', // Importante: usar 'text' em vez de 'json'
-        success: function(responseText) {
-            console.log("Resposta original:", responseText);
-            
-            // Remover qualquer BOM ou caractere especial no início
-            let cleanResponse = responseText;
-            // Remove BOM e outros caracteres problemáticos
-            if (cleanResponse.charCodeAt(0) === 0xFEFF || cleanResponse.charCodeAt(0) === 65279) {
-                cleanResponse = cleanResponse.substring(1);
-            }
-            
-            try {
-                // Agora tentamos analisar a resposta limpa como JSON
-                const response = JSON.parse(cleanResponse);
-                console.log("JSON processado:", response);
+    // Finalizar venda
+    $("#btn-finalizar-venda").click(function() {
+        if (produtos.length === 0) {
+            alert("Adicione pelo menos um produto à venda!");
+            return;
+        }
+        
+        const recebido = parseFloat($("#recebido").val()) || 0;
+        if (recebido < total && $("#forma-pagamento").val() === 'dinheiro') {
+            alert("O valor recebido é menor que o total da venda!");
+            return;
+        }
+        
+        const venda = {
+            cliente_id: $("#cliente").val() || null,
+            forma_pagamento: $("#forma-pagamento").val(),
+            valor_total: total,
+            desconto: desconto,
+            observacoes: $("#observacoes").val(),
+            itens: []
+        };
+        
+        for (let i = 0; i < produtos.length; i++) {
+            venda.itens.push({
+                produto_id: produtos[i].id,
+                quantidade: produtos[i].quantidade,
+                preco_unitario: produtos[i].preco_venda
+            });
+        }
+        
+        console.log("Enviando dados da venda:", venda);
+        
+        $.ajax({
+            url: 'ajax_pdv.php',
+            type: 'POST',
+            data: {
+                acao: 'finalizar_venda',
+                venda: JSON.stringify(venda)
+            },
+            dataType: 'json',
+            success: function(response) {
+                console.log("Resposta recebida:", response);
                 
                 if (response.status === 'success') {
                     alert("Venda finalizada com sucesso!");
@@ -629,36 +617,19 @@ $("#btn-finalizar-venda").click(function() {
                     alert(response.message || 'Erro ao finalizar venda!');
                     console.error("Erro detalhado:", response);
                 }
-            } catch (e) {
-                console.error("Erro ao processar resposta JSON:", e);
-                console.error("Resposta original:", responseText);
-                console.error("Resposta limpa:", cleanResponse);
-                alert('Erro ao processar resposta do servidor. A venda pode ter sido finalizada, verifique o sistema.');
+            },
+            error: function(xhr, status, error) {
+                console.error("Erro AJAX:", status, error);
+                console.error("Resposta:", xhr.responseText);
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    alert(response.message || 'Erro ao finalizar venda!');
+                } catch (e) {
+                    alert('Erro ao finalizar venda! Verifique o console para mais detalhes.');
+                }
             }
-        },
-        error: function(xhr, status, error) {
-            console.error("Erro AJAX:", status, error);
-            console.error("Resposta:", xhr.responseText);
-            
-            // Tentar processar mesmo com erro
-            if (xhr.responseText && xhr.responseText.includes('"status":"success"')) {
-                alert("A venda parece ter sido concluída com sucesso, mas houve um erro na comunicação. Verifique se a venda foi registrada no sistema.");
-                
-                // Limpar venda em caso de sucesso provável
-                produtos = [];
-                $("#tabela-produtos tbody").empty();
-                $("#cliente").val('');
-                $("#forma-pagamento").val('dinheiro');
-                $("#desconto").val('0');
-                $("#recebido").val('0');
-                $("#observacoes").val('');
-                atualizarTotais();
-            } else {
-                alert('Erro de comunicação com o servidor: ' + error);
-            }
-        }
+        });
     });
-});
     
     // Cancelar venda
     $("#btn-cancelar-venda").click(function() {
