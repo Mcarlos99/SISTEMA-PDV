@@ -318,6 +318,12 @@ include 'header.php';
         <label class="form-check-label" for="impressao_automatica">Impressão automática de comprovante após venda</label>
     </div>
 </div>
+<div class="mb-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="caixa_obrigatorio" name="caixa_obrigatorio" value="1" <?php echo ($dados_sistema['caixa_obrigatorio'] == 1) ? 'checked' : ''; ?>>
+        <label class="form-check-label" for="caixa_obrigatorio">Exigir abertura de caixa para realizar vendas</label>
+    </div>
+</div>
                         
                         <div class="text-end">
                             <button type="submit" name="salvar_configuracoes" class="btn btn-primary">

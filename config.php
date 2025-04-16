@@ -34,3 +34,5 @@ $log = new LogSistema($pdo);
 // $backup = new Backup($pdo, $config); // Removido
 $config_empresa = new ConfiguracaoEmpresa($pdo);
 $config_sistema = new ConfiguracaoSistema($pdo);
+// Inicializa a classe Caixa
+$caixa = new Caixa($pdo);

@@ -2,8 +2,16 @@
 require_once 'config.php';
 verificarLogin();
 
+// Desabilitar cache
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+// Definir cabeçalho JSON
+header('Content-Type: application/json');
+
 // Verificar ação
-$acao = $_POST['acao'] ?? '';
+$acao = isset($_POST['acao']) ? $_POST['acao'] : '';
 
 switch ($acao) {
     case 'buscar_produto':
@@ -13,6 +21,29 @@ switch ($acao) {
         salvarCliente();
         break;
     case 'finalizar_venda':
+        // Registrar a venda no caixa se a configuração exigir caixa aberto
+if ($config_sistema->buscar()['caixa_obrigatorio'] == 1) {
+    $caixa_aberto = $caixa->verificarCaixaAberto();
+    if ($caixa_aberto) {
+        try {
+            // Adicionar a venda como movimentação no caixa
+            $dados_movimentacao = [
+                'tipo' => 'venda',
+                'valor' => $venda['valor_total'],
+                'forma_pagamento' => $venda['forma_pagamento'],
+                'documento_id' => $venda_id, // ID da venda que acabou de ser inserida
+                'observacoes' => 'Venda #' . $venda_id
+            ];
+            
+            $caixa->adicionarMovimentacao($dados_movimentacao);
+        } catch (Exception $e) {
+            // Apenas registra o erro, não impede a conclusão da venda
+            if (function_exists('error_log')) {
+                error_log("Erro ao registrar venda no caixa: " . $e->getMessage());
+            }
+        }
+    }
+}
         finalizarVenda();
         break;
     default:
@@ -23,7 +54,7 @@ switch ($acao) {
 function buscarProduto() {
     global $produto;
     
-    $codigo = $_POST['codigo'] ?? '';
+    $codigo = isset($_POST['codigo']) ? $_POST['codigo'] : '';
     
     if (empty($codigo)) {
         echo json_encode(['status' => 'error', 'message' => 'Código do produto não informado']);
@@ -63,10 +94,10 @@ function buscarProduto() {
 function salvarCliente() {
     global $cliente;
     
-    $nome = $_POST['nome'] ?? '';
-    $cpf_cnpj = $_POST['cpf_cnpj'] ?? '';
-    $telefone = $_POST['telefone'] ?? '';
-    $email = $_POST['email'] ?? '';
+    $nome = isset($_POST['nome']) ? $_POST['nome'] : '';
+    $cpf_cnpj = isset($_POST['cpf_cnpj']) ? $_POST['cpf_cnpj'] : '';
+    $telefone = isset($_POST['telefone']) ? $_POST['telefone'] : '';
+    $email = isset($_POST['email']) ? $_POST['email'] : '';
     
     if (empty($nome)) {
         echo json_encode(['status' => 'error', 'message' => 'Nome do cliente é obrigatório']);
@@ -118,7 +149,7 @@ function salvarCliente() {
 function finalizarVenda() {
     global $venda;
     
-    $venda_json = $_POST['venda'] ?? '';
+    $venda_json = isset($_POST['venda']) ? $_POST['venda'] : '';
     
     if (empty($venda_json)) {
         echo json_encode(['status' => 'error', 'message' => 'Dados da venda não informados']);

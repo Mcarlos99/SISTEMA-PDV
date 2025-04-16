@@ -218,6 +218,41 @@ class TabelasBD {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ");
 
+// Caixa - Controle de abertura e fechamento do caixa
+$this->pdo->exec("
+    CREATE TABLE IF NOT EXISTS caixas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_id INT NOT NULL,
+        data_abertura TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        data_fechamento TIMESTAMP NULL DEFAULT NULL,
+        valor_inicial DECIMAL(10,2) NOT NULL DEFAULT 0,
+        valor_final DECIMAL(10,2) NULL DEFAULT NULL,
+        valor_vendas DECIMAL(10,2) NULL DEFAULT NULL,
+        valor_sangrias DECIMAL(10,2) NULL DEFAULT NULL,
+        valor_suprimentos DECIMAL(10,2) NULL DEFAULT NULL,
+        observacoes TEXT NULL,
+        status ENUM('aberto', 'fechado') NOT NULL DEFAULT 'aberto',
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+");
+
+// Movimentações do Caixa - Registra entradas e saídas
+$this->pdo->exec("
+    CREATE TABLE IF NOT EXISTS movimentacoes_caixa (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        caixa_id INT NOT NULL,
+        usuario_id INT NOT NULL,
+        data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        tipo ENUM('venda', 'sangria', 'suprimento') NOT NULL,
+        valor DECIMAL(10,2) NOT NULL,
+        forma_pagamento ENUM('dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'boleto') NULL DEFAULT NULL,
+        documento_id INT NULL, -- ID da venda, se for o caso
+        observacoes TEXT NULL,
+        FOREIGN KEY (caixa_id) REFERENCES caixas(id),
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+");
+
         // Compras (Entrada de produtos)
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS compras (
@@ -293,6 +328,23 @@ class TabelasBD {
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ");
+        // Adicionar campo caixa_obrigatorio à tabela configuracoes_sistema se ainda não existir
+try {
+    // Verificar se a coluna existe
+    $stmt = $this->pdo->prepare("SHOW COLUMNS FROM configuracoes_sistema LIKE 'caixa_obrigatorio'");
+    $stmt->execute();
+    $coluna_existe = $stmt->rowCount() > 0;
+    
+    if (!$coluna_existe) {
+        // Adicionar a coluna se não existir
+        $this->pdo->exec("ALTER TABLE configuracoes_sistema ADD COLUMN caixa_obrigatorio BOOLEAN NOT NULL DEFAULT TRUE");
+    }
+} catch (Exception $e) {
+    // Ignora o erro, pois não é crítico
+    if (function_exists('error_log')) {
+        error_log("Erro ao verificar/adicionar coluna caixa_obrigatorio: " . $e->getMessage());
+    }
+}
         
         // Inserir configurações padrão do sistema se não existirem
         $stmt = $this->pdo->prepare("SELECT id FROM configuracoes_sistema LIMIT 1");
@@ -448,22 +500,24 @@ class ConfiguracaoSistema {
     // Atualizar configurações do sistema
     public function atualizar($dados) {
         $stmt = $this->pdo->prepare("
-            UPDATE configuracoes_sistema SET 
-            itens_por_pagina = :itens_por_pagina, 
-            tema = :tema, 
-            moeda = :moeda, 
-            formato_data = :formato_data, 
-            estoque_negativo = :estoque_negativo, 
-            alerta_estoque = :alerta_estoque, 
-            impressao_automatica = :impressao_automatica
-            WHERE id = :id
-        ");
+        UPDATE configuracoes_sistema SET 
+        itens_por_pagina = :itens_por_pagina, 
+        tema = :tema, 
+        moeda = :moeda, 
+        formato_data = :formato_data, 
+        estoque_negativo = :estoque_negativo, 
+        alerta_estoque = :alerta_estoque, 
+        impressao_automatica = :impressao_automatica,
+        caixa_obrigatorio = :caixa_obrigatorio
+        WHERE id = :id
+    ");
         
         // Converter checkbox para booleano
         $estoque_negativo = isset($dados['estoque_negativo']) ? 1 : 0;
         $alerta_estoque = isset($dados['alerta_estoque']) ? 1 : 0;
         $impressao_automatica = isset($dados['impressao_automatica']) ? 1 : 0;
-        
+        $caixa_obrigatorio = isset($dados['caixa_obrigatorio']) ? 1 : 0;
+
         $stmt->bindParam(':id', $dados['id']);
         $stmt->bindParam(':itens_por_pagina', $dados['itens_por_pagina']);
         $stmt->bindParam(':tema', $dados['tema']);
@@ -472,6 +526,7 @@ class ConfiguracaoSistema {
         $stmt->bindParam(':estoque_negativo', $estoque_negativo);
         $stmt->bindParam(':alerta_estoque', $alerta_estoque);
         $stmt->bindParam(':impressao_automatica', $impressao_automatica);
+        $stmt->bindParam(':caixa_obrigatorio', $caixa_obrigatorio, PDO::PARAM_INT);
         
         $result = $stmt->execute();
         
@@ -483,6 +538,390 @@ class ConfiguracaoSistema {
         return $result;
     }
 }
+// Classe para gerenciar o caixa
+class Caixa {
+    private $pdo;
+
+    public function __construct($pdo) {
+        $this->pdo = $pdo;
+    }
+
+    // Verificar se existe um caixa aberto para o usuário atual
+    public function verificarCaixaAberto() {
+        $usuario_id = $_SESSION['usuario_id'];
+        $stmt = $this->pdo->prepare("
+            SELECT id, data_abertura, valor_inicial 
+            FROM caixas 
+            WHERE usuario_id = :usuario_id AND status = 'aberto' 
+            LIMIT 1
+        ");
+        $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetch();
+    }
+
+    // Abrir um novo caixa
+    public function abrir($valor_inicial, $observacoes = '') {
+        try {
+            // Verificar se já existe um caixa aberto para este usuário
+            $caixa_existente = $this->verificarCaixaAberto();
+            if ($caixa_existente) {
+                throw new Exception("Já existe um caixa aberto para este usuário.");
+            }
+            
+            $usuario_id = $_SESSION['usuario_id'];
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO caixas 
+                (usuario_id, valor_inicial, observacoes) 
+                VALUES 
+                (:usuario_id, :valor_inicial, :observacoes)
+            ");
+            
+            $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+            $stmt->bindParam(':valor_inicial', $valor_inicial, PDO::PARAM_STR);
+            $stmt->bindParam(':observacoes', $observacoes, PDO::PARAM_STR);
+            
+            $stmt->execute();
+            $caixa_id = $this->pdo->lastInsertId();
+            
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Caixa', 
+                    "Caixa #{$caixa_id} aberto com valor inicial de " . formatarDinheiro($valor_inicial)
+                );
+            }
+            
+            return $caixa_id;
+            
+        } catch (Exception $e) {
+            if (function_exists('error_log')) {
+                error_log("Erro ao abrir caixa: " . $e->getMessage());
+            }
+            throw $e;
+        }
+    }
+
+    // Adicionar uma movimentação (venda, sangria ou suprimento)
+    public function adicionarMovimentacao($dados) {
+        try {
+            // Verificar se existe um caixa aberto
+            $caixa = $this->verificarCaixaAberto();
+            if (!$caixa) {
+                throw new Exception("Não há um caixa aberto para registrar esta movimentação.");
+            }
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO movimentacoes_caixa 
+                (caixa_id, usuario_id, tipo, valor, forma_pagamento, documento_id, observacoes) 
+                VALUES 
+                (:caixa_id, :usuario_id, :tipo, :valor, :forma_pagamento, :documento_id, :observacoes)
+            ");
+            
+            $usuario_id = $_SESSION['usuario_id'];
+            
+            $stmt->bindParam(':caixa_id', $caixa['id'], PDO::PARAM_INT);
+            $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+            $stmt->bindParam(':tipo', $dados['tipo'], PDO::PARAM_STR);
+            $stmt->bindParam(':valor', $dados['valor'], PDO::PARAM_STR);
+            $stmt->bindParam(':forma_pagamento', $dados['forma_pagamento'], PDO::PARAM_STR);
+            $stmt->bindParam(':documento_id', $dados['documento_id'], PDO::PARAM_INT);
+            $stmt->bindParam(':observacoes', $dados['observacoes'], PDO::PARAM_STR);
+            
+            $stmt->execute();
+            $movimentacao_id = $this->pdo->lastInsertId();
+            
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $tipo_texto = ucfirst($dados['tipo']);
+                $valor_formatado = formatarDinheiro($dados['valor']);
+                
+                $GLOBALS['log']->registrar(
+                    'Caixa', 
+                    "{$tipo_texto} registrada no caixa #{$caixa['id']} no valor de {$valor_formatado}"
+                );
+            }
+            
+            return $movimentacao_id;
+            
+        } catch (Exception $e) {
+            if (function_exists('error_log')) {
+                error_log("Erro ao adicionar movimentação: " . $e->getMessage());
+            }
+            throw $e;
+        }
+    }
+
+    // Registrar uma sangria (retirada de dinheiro do caixa)
+    public function registrarSangria($valor, $observacoes = '') {
+        try {
+            $dados = [
+                'tipo' => 'sangria',
+                'valor' => $valor,
+                'forma_pagamento' => 'dinheiro', // Sangria só acontece em dinheiro
+                'documento_id' => null,
+                'observacoes' => $observacoes
+            ];
+            
+            return $this->adicionarMovimentacao($dados);
+            
+        } catch (Exception $e) {
+            throw $e;
+        }
+    }
+
+    // Registrar um suprimento (adição de dinheiro ao caixa)
+    public function registrarSuprimento($valor, $observacoes = '') {
+        try {
+            $dados = [
+                'tipo' => 'suprimento',
+                'valor' => $valor,
+                'forma_pagamento' => 'dinheiro', // Suprimento só acontece em dinheiro
+                'documento_id' => null,
+                'observacoes' => $observacoes
+            ];
+            
+            return $this->adicionarMovimentacao($dados);
+            
+        } catch (Exception $e) {
+            throw $e;
+        }
+    }
+
+    // Fechar o caixa
+    public function fechar($valor_final, $observacoes = '') {
+        try {
+            // Verificar se existe um caixa aberto
+            $caixa = $this->verificarCaixaAberto();
+            if (!$caixa) {
+                throw new Exception("Não há um caixa aberto para fechar.");
+            }
+            
+            // Calcular totais
+            $valor_vendas = $this->calcularTotalVendas($caixa['id']);
+            $valor_sangrias = $this->calcularTotalSangrias($caixa['id']);
+            $valor_suprimentos = $this->calcularTotalSuprimentos($caixa['id']);
+            
+            // Atualizar o caixa
+            $stmt = $this->pdo->prepare("
+                UPDATE caixas SET
+                data_fechamento = NOW(),
+                valor_final = :valor_final,
+                valor_vendas = :valor_vendas,
+                valor_sangrias = :valor_sangrias,
+                valor_suprimentos = :valor_suprimentos,
+                observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :observacoes),
+                status = 'fechado'
+                WHERE id = :id
+            ");
+            
+            $stmt->bindParam(':id', $caixa['id'], PDO::PARAM_INT);
+            $stmt->bindParam(':valor_final', $valor_final, PDO::PARAM_STR);
+            $stmt->bindParam(':valor_vendas', $valor_vendas, PDO::PARAM_STR);
+            $stmt->bindParam(':valor_sangrias', $valor_sangrias, PDO::PARAM_STR);
+            $stmt->bindParam(':valor_suprimentos', $valor_suprimentos, PDO::PARAM_STR);
+            $stmt->bindParam(':observacoes', $observacoes, PDO::PARAM_STR);
+            
+            $stmt->execute();
+            
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Caixa', 
+                    "Caixa #{$caixa['id']} fechado com valor final de " . formatarDinheiro($valor_final)
+                );
+            }
+            
+            // Calcular diferença entre valor esperado e valor informado
+            $valor_esperado = $caixa['valor_inicial'] + $valor_vendas + $valor_suprimentos - $valor_sangrias;
+            $diferenca = $valor_final - $valor_esperado;
+            
+            return [
+                'caixa_id' => $caixa['id'],
+                'valor_inicial' => $caixa['valor_inicial'],
+                'valor_final' => $valor_final,
+                'valor_vendas' => $valor_vendas,
+                'valor_sangrias' => $valor_sangrias,
+                'valor_suprimentos' => $valor_suprimentos,
+                'valor_esperado' => $valor_esperado,
+                'diferenca' => $diferenca
+            ];
+            
+        } catch (Exception $e) {
+            if (function_exists('error_log')) {
+                error_log("Erro ao fechar caixa: " . $e->getMessage());
+            }
+            throw $e;
+        }
+    }
+
+    // Listar movimentações do caixa atual
+    public function listarMovimentacoes($caixa_id = null) {
+        try {
+            // Se não foi informado um caixa_id, usa o caixa aberto do usuário atual
+            if ($caixa_id === null) {
+                $caixa = $this->verificarCaixaAberto();
+                if (!$caixa) {
+                    throw new Exception("Não há um caixa aberto para listar movimentações.");
+                }
+                $caixa_id = $caixa['id'];
+            }
+            
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    m.*, 
+                    u.nome AS usuario_nome,
+                    DATE_FORMAT(m.data_hora, '%d/%m/%Y %H:%i') AS data_formatada
+                FROM movimentacoes_caixa m
+                LEFT JOIN usuarios u ON m.usuario_id = u.id
+                WHERE m.caixa_id = :caixa_id
+                ORDER BY m.data_hora
+            ");
+            
+            $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            return $stmt->fetchAll();
+            
+        } catch (Exception $e) {
+            if (function_exists('error_log')) {
+                error_log("Erro ao listar movimentações: " . $e->getMessage());
+            }
+            throw $e;
+        }
+    }
+
+    // Buscar caixa por ID
+    public function buscarPorId($id) {
+        $stmt = $this->pdo->prepare("
+            SELECT c.*, 
+                   u.nome AS usuario_nome,
+                   DATE_FORMAT(c.data_abertura, '%d/%m/%Y %H:%i') AS data_abertura_formatada,
+                   DATE_FORMAT(c.data_fechamento, '%d/%m/%Y %H:%i') AS data_fechamento_formatada
+            FROM caixas c
+            LEFT JOIN usuarios u ON c.usuario_id = u.id
+            WHERE c.id = :id
+            LIMIT 1
+        ");
+        
+        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetch();
+    }
+
+    // Listar histórico de caixas
+    public function listarHistorico($limite = 30) {
+        $stmt = $this->pdo->prepare("
+            SELECT c.*, 
+                   u.nome AS usuario_nome,
+                   DATE_FORMAT(c.data_abertura, '%d/%m/%Y %H:%i') AS data_abertura_formatada,
+                   DATE_FORMAT(c.data_fechamento, '%d/%m/%Y %H:%i') AS data_fechamento_formatada
+            FROM caixas c
+            LEFT JOIN usuarios u ON c.usuario_id = u.id
+            ORDER BY c.data_abertura DESC
+            LIMIT :limite
+        ");
+        
+        $stmt->bindParam(':limite', $limite, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll();
+    }
+
+    // Calcular o total de vendas do caixa
+    private function calcularTotalVendas($caixa_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT COALESCE(SUM(valor), 0) AS total 
+            FROM movimentacoes_caixa 
+            WHERE caixa_id = :caixa_id AND tipo = 'venda'
+        ");
+        
+        $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $resultado = $stmt->fetch();
+        return $resultado['total'];
+    }
+
+    // Calcular o total de sangrias do caixa
+    private function calcularTotalSangrias($caixa_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT COALESCE(SUM(valor), 0) AS total 
+            FROM movimentacoes_caixa 
+            WHERE caixa_id = :caixa_id AND tipo = 'sangria'
+        ");
+        
+        $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $resultado = $stmt->fetch();
+        return $resultado['total'];
+    }
+
+    // Calcular o total de suprimentos do caixa
+    private function calcularTotalSuprimentos($caixa_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT COALESCE(SUM(valor), 0) AS total 
+            FROM movimentacoes_caixa 
+            WHERE caixa_id = :caixa_id AND tipo = 'suprimento'
+        ");
+        
+        $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $resultado = $stmt->fetch();
+        return $resultado['total'];
+    }
+
+    // Resumo das vendas por forma de pagamento
+    public function resumoVendasPorFormaPagamento($caixa_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT 
+                forma_pagamento,
+                COUNT(*) AS quantidade,
+                SUM(valor) AS total
+            FROM movimentacoes_caixa 
+            WHERE caixa_id = :caixa_id AND tipo = 'venda'
+            GROUP BY forma_pagamento
+        ");
+        
+        $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll();
+    }
+
+    // Verificar se o caixa precisa ser aberto para fazer vendas
+    public function verificarCaixaNecessario() {
+        try {
+            // Buscar configuração na tabela configuracoes_sistema
+            $stmt = $this->pdo->query("
+                SELECT caixa_obrigatorio FROM configuracoes_sistema LIMIT 1
+            ");
+            $config = $stmt->fetch();
+            
+            // Se a configuração existir e for verdadeira, verifica se o caixa está aberto
+            if (isset($config['caixa_obrigatorio']) && $config['caixa_obrigatorio']) {
+                $caixa = $this->verificarCaixaAberto();
+                return $caixa ? false : true; // Precisa abrir caixa se não houver caixa aberto
+            }
+            
+            // Se a configuração não existir ou for falsa, não é necessário ter caixa aberto
+            return false;
+            
+        } catch (Exception $e) {
+            // Em caso de erro, retorna false (não bloqueia a venda)
+            if (function_exists('error_log')) {
+                error_log("Erro ao verificar necessidade de caixa: " . $e->getMessage());
+            }
+            return false;
+        }
+    }
+}
+
 // Classe para gerenciar usuários
 class Usuario {
     private $pdo;
