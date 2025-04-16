@@ -21,7 +21,7 @@ switch ($acao) {
         salvarCliente();
         break;
     case 'finalizar_venda':
-        // Registrar a venda no caixa se a configuração exigir caixa aberto
+	    // Registrar a venda no caixa se a configuração exigir caixa aberto
 if ($config_sistema->buscar()['caixa_obrigatorio'] == 1) {
     $caixa_aberto = $caixa->verificarCaixaAberto();
     if ($caixa_aberto) {
