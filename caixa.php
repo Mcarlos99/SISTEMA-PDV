@@ -135,7 +135,7 @@ include 'header.php';
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-striped table-hover datatable">
+                <table class="table table-striped table-hover datatable" id="tabelaHistoricoCaixas">
                     <thead>
                         <tr>
                             <th>#</th>
@@ -561,5 +561,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+document.addEventListener('DOMContentLoaded', function() {
+    // Função para reinicializar a tabela de histórico após DataTables ser carregado
+    function configurarTabelaHistorico() {
+        // Aguarda até que DataTables esteja completamente carregado
+        if (typeof $.fn.dataTable !== 'undefined') {
+            // Espera um breve momento para garantir que o DataTables padrão já inicializou
+            setTimeout(function() {
+                // Se já for uma instância DataTable, destrói para reinicializar
+                if ($.fn.dataTable.isDataTable('#tabelaHistoricoCaixas')) {
+                    $('#tabelaHistoricoCaixas').DataTable().destroy();
+                }
+                
+                // Reinicializa com ordenação específica
+                $('#tabelaHistoricoCaixas').DataTable({
+                    "order": [[ 0, "desc" ]], // Ordena pelo ID (primeira coluna) em ordem decrescente
+                    // Mantém as outras configurações padrão do DataTables
+                    "language": {
+                        "url": "//cdn.datatables.net/plug-ins/1.10.24/i18n/Portuguese-Brasil.json"
+                    }
+                });
+            }, 100); // Pequeno atraso para garantir que a inicialização padrão já ocorreu
+        } else {
+            // Se DataTables ainda não estiver carregado, tenta novamente em 100ms
+            setTimeout(configurarTabelaHistorico, 100);
+        }
+    }
+    
+    // Inicia o processo de configuração
+    configurarTabelaHistorico();
+});
 </script>
+
 <?php include 'footer.php'; ?>

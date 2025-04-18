@@ -1,20 +1,18 @@
 <?php
 require_once 'config.php';
-verificarLogin();
 
-// Adicionando código para exibir erros (remova em produção)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+// Verificar se o usuário está logado
+if (!isset($_SESSION['usuario_id'])) {
+    header('Location: login.php');
+    exit;
+}
 
-// Verificar se é necessário ter caixa aberto para vender e se existe um caixa aberto
-if ($config_sistema->buscar()['caixa_obrigatorio'] == 1) {
-    $caixa_aberto = $caixa->verificarCaixaAberto();
-    if (!$caixa_aberto) {
-        alerta('É necessário abrir o caixa antes de realizar vendas!', 'warning');
-        header('Location: caixa.php');
-        exit;
-    }
+// Verificar se o caixa precisa ser aberto
+$caixa = new Caixa($pdo);
+if ($caixa->verificarCaixaNecessario()) {
+    alerta('É necessário abrir o caixa antes de realizar vendas.', 'warning');
+    header('Location: caixa.php?acao=abrir');
+    exit;
 }
 
 // Template da página
@@ -23,120 +21,203 @@ include 'header.php';
 ?>
 
 <div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <div class="card h-100">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+        <h2 class="mb-3 mb-md-0">
+            <i class="fas fa-cash-register me-2 text-primary"></i>
+            Ponto de Venda (PDV)
+        </h2>
+        <button type="button" class="btn btn-outline-secondary" id="btnLimpar">
+            <i class="fas fa-trash-alt me-1"></i>
+            Limpar
+        </button>
+    </div>
+    
+    <div class="row">
+        <!-- Produtos e Cliente -->
+        <div class="col-lg-8 mb-4 mb-lg-0">
+            <!-- Busca de produtos -->
+            <div class="card mb-4">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0">Produtos</h5>
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-search me-2"></i>
+                        Buscar Produtos
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-8">
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-6">
                             <div class="input-group">
-                                <input type="text" id="codigo-produto" class="form-control" placeholder="Código do produto ou nome" autofocus>
-                                <button class="btn btn-outline-secondary" type="button" id="btn-buscar-produto">
+                                <span class="input-group-text">
+                                    <i class="fas fa-barcode"></i>
+                                </span>
+                                <input type="text" id="codigoProduto" class="form-control" placeholder="Código/Barcode" autofocus>
+                                <button class="btn btn-primary" type="button" id="btnBuscarCodigo">
                                     <i class="fas fa-search"></i>
                                 </button>
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <button type="button" class="btn btn-outline-primary w-100" data-bs-toggle="modal" data-bs-target="#modal-buscar-produtos">
-                                <i class="fas fa-list"></i> Listar Produtos
-                            </button>
+                        <div class="col-12 col-sm-6">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-tag"></i>
+                                </span>
+                                <input type="text" id="nomeProduto" class="form-control" placeholder="Nome do produto">
+                                <button class="btn btn-primary" type="button" id="btnBuscarNome">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    
+                </div>
+            </div>
+            
+            <!-- Cliente -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-user me-2"></i>
+                        Cliente
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-12 col-md-8">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-users"></i>
+                                </span>
+                                <select id="clienteId" class="form-select">
+                                    <option value="">Selecione um cliente (opcional)</option>
+                                    <?php
+                                    $clientes = (new Cliente($pdo))->listar();
+                                    foreach ($clientes as $c) {
+                                        echo '<option value="'.$c['id'].'">'.esc($c['nome']).'</option>';
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <a href="clientes.php?acao=novo" class="btn btn-outline-primary w-100">
+                                <i class="fas fa-user-plus me-1"></i>
+                                <span class="d-none d-md-inline">Novo Cliente</span>
+                                <span class="d-inline d-md-none">Novo</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Itens da venda -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-shopping-cart me-2"></i>
+                        Itens da Venda
+                    </h5>
+                </div>
+                <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover" id="tabela-produtos">
+                        <table class="table table-striped table-hover mb-0">
                             <thead>
                                 <tr>
                                     <th>Código</th>
                                     <th>Produto</th>
-                                    <th>Preço</th>
                                     <th>Qtd</th>
+                                    <th>Preço</th>
                                     <th>Subtotal</th>
                                     <th>Ações</th>
                                 </tr>
                             </thead>
-                            <tbody></tbody>
+                            <tbody id="itensVenda">
+                                <tr class="no-items">
+                                    <td colspan="6" class="text-center py-4">
+                                        <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+                                        <p class="mb-0">Nenhum item adicionado à venda</p>
+                                    </td>
+                                </tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-header bg-success text-white">
-                    <h5 class="card-title mb-0">Resumo da Venda</h5>
+        
+        <!-- Resumo da venda e pagamento -->
+        <div class="col-lg-4">
+            <div class="card sticky-lg-top" style="top: 80px; z-index: 100;">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-file-invoice-dollar me-2"></i>
+                        Resumo da Venda
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <div class="mb-3">
-                        <label for="cliente" class="form-label">Cliente</label>
-                        <div class="input-group">
-                            <select id="cliente" class="form-select">
-                                <option value="">Cliente não identificado</option>
-                                <?php
-                                $clientes = $cliente->listar();
-                                foreach ($clientes as $c) {
-                                    echo '<option value="'.$c['id'].'">'.$c['nome'].'</option>';
-                                }
-                                ?>
-                            </select>
-                            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#modal-cliente-rapido">
-                                <i class="fas fa-plus"></i>
-                            </button>
+                    <div class="total-section mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="text-muted">Subtotal:</span>
+                            <span id="subtotal" class="fw-bold">R$ 0,00</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <label for="desconto" class="text-muted mb-0">Desconto:</label>
+                            <div class="input-group" style="max-width: 150px">
+                                <span class="input-group-text">R$</span>
+                                <input type="number" id="desconto" class="form-control" value="0" min="0" step="0.01">
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center total-value">
+                            <span class="h5 mb-0">Total:</span>
+                            <span id="total" class="h3 mb-0 text-success">R$ 0,00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="payment-section mb-4">
+                        <label class="form-label">Forma de Pagamento:</label>
+                        <div class="payment-options d-flex flex-wrap gap-2 mb-3">
+                            <div class="form-check payment-option">
+                                <input class="form-check-input" type="radio" name="formaPagamento" id="pagamentoDinheiro" value="dinheiro" checked>
+                                <label class="form-check-label px-2 py-2 rounded border d-flex align-items-center" for="pagamentoDinheiro">
+                                    <i class="fas fa-money-bill-wave text-success me-2"></i>
+                                    <span>Dinheiro</span>
+                                </label>
+                            </div>
+                            <div class="form-check payment-option">
+                                <input class="form-check-input" type="radio" name="formaPagamento" id="pagamentoCartaoCredito" value="cartao_credito">
+                                <label class="form-check-label px-2 py-2 rounded border d-flex align-items-center" for="pagamentoCartaoCredito">
+                                    <i class="fas fa-credit-card text-primary me-2"></i>
+                                    <span>Crédito</span>
+                                </label>
+                            </div>
+                            <div class="form-check payment-option">
+                                <input class="form-check-input" type="radio" name="formaPagamento" id="pagamentoCartaoDebito" value="cartao_debito">
+                                <label class="form-check-label px-2 py-2 rounded border d-flex align-items-center" for="pagamentoCartaoDebito">
+                                    <i class="fas fa-credit-card text-info me-2"></i>
+                                    <span>Débito</span>
+                                </label>
+                            </div>
+                            <div class="form-check payment-option">
+                                <input class="form-check-input" type="radio" name="formaPagamento" id="pagamentoPix" value="pix">
+                                <label class="form-check-label px-2 py-2 rounded border d-flex align-items-center" for="pagamentoPix">
+                                    <i class="fas fa-qrcode text-warning me-2"></i>
+                                    <span>PIX</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="forma-pagamento" class="form-label">Forma de Pagamento</label>
-                        <select id="forma-pagamento" class="form-select">
-                            <option value="dinheiro">Dinheiro</option>
-                            <option value="cartao_credito">Cartão de Crédito</option>
-                            <option value="cartao_debito">Cartão de Débito</option>
-                            <option value="pix">PIX</option>
-                            <option value="boleto">Boleto</option>
-                        </select>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="subtotal" class="form-label">Subtotal</label>
-                            <input type="text" id="subtotal" class="form-control" readonly value="R$ 0,00">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="desconto" class="form-label">Desconto</label>
-                            <input type="text" id="desconto" class="form-control" value="0">
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <label for="total" class="form-label">Total</label>
-                            <input type="text" id="total" class="form-control form-control-lg fw-bold" readonly value="R$ 0,00">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="recebido" class="form-label">Valor Recebido</label>
-                            <input type="text" id="recebido" class="form-control" value="0">
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="troco" class="form-label">Troco</label>
-                        <input type="text" id="troco" class="form-control" readonly value="R$ 0,00">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="observacoes" class="form-label">Observações</label>
+                        <label for="observacoes" class="form-label">Observações:</label>
                         <textarea id="observacoes" class="form-control" rows="2"></textarea>
                     </div>
                     
                     <div class="d-grid gap-2">
-                        <button type="button" id="btn-finalizar-venda" class="btn btn-success btn-lg">
-                            <i class="fas fa-check"></i> Finalizar Venda
+                        <button type="button" id="btnFinalizar" class="btn btn-success btn-lg" disabled>
+                            <i class="fas fa-check-circle me-2"></i>
+                            Finalizar Venda
                         </button>
-                        <button type="button" id="btn-cancelar-venda" class="btn btn-danger">
-                            <i class="fas fa-times"></i> Cancelar Venda
+                        <button type="button" id="btnCancelar" class="btn btn-outline-danger">
+                            <i class="fas fa-times-circle me-2"></i>
+                            Cancelar
                         </button>
                     </div>
                 </div>
@@ -145,44 +226,69 @@ include 'header.php';
     </div>
 </div>
 
-<!-- Modal de Busca de Produtos -->
-<div class="modal fade" id="modal-buscar-produtos" tabindex="-1" aria-labelledby="modal-buscar-produtos-label" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+<!-- Modal Quantidade -->
+<div class="modal fade" id="modalQuantidade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modal-buscar-produtos-label">Buscar Produtos</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Adicionar Produto</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <input type="text" id="busca-produtos" class="form-control" placeholder="Digite para buscar...">
+                <div class="produto-info mb-3">
+                    <h5 id="modalProdutoNome">Nome do Produto</h5>
+                    <div class="d-flex justify-content-between">
+                        <span>Preço: <span id="modalProdutoPreco" class="text-primary">R$ 0,00</span></span>
+                        <span>Estoque: <span id="modalProdutoEstoque" class="text-success">0</span></span>
+                    </div>
                 </div>
+                
+                <div class="form-group">
+                    <label for="quantidade" class="form-label">Quantidade:</label>
+                    <div class="input-group">
+                        <button type="button" class="btn btn-outline-secondary" id="diminuirQtd">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <input type="number" id="quantidade" class="form-control text-center" value="1" min="1">
+                        <button type="button" class="btn btn-outline-secondary" id="aumentarQtd">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnAdicionarProduto">
+                    <i class="fas fa-cart-plus me-1"></i>
+                    Adicionar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Busca de Produtos -->
+<div class="modal fade" id="modalBuscaProdutos" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Buscar Produtos</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="tabela-busca-produtos">
+                    <table class="table table-hover table-striped">
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Produto</th>
                                 <th>Preço</th>
                                 <th>Estoque</th>
-                                <th>Ações</th>
+                                <th>Ação</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <?php
-                            $produtos = $produto->listar();
-                            foreach ($produtos as $p) {
-                                if ($p['ativo']) {
-                                    echo '<tr>';
-                                    echo '<td>'.$p['codigo'].'</td>';
-                                    echo '<td>'.$p['nome'].'</td>';
-                                    echo '<td>'.formatarDinheiro($p['preco_venda']).'</td>';
-                                    echo '<td>'.$p['estoque_atual'].'</td>';
-                                    echo '<td><button class="btn btn-sm btn-primary btn-selecionar-produto" data-id="'.$p['id'].'" data-codigo="'.$p['codigo'].'" data-nome="'.$p['nome'].'" data-preco="'.$p['preco_venda'].'"><i class="fas fa-plus"></i></button></td>';
-                                    echo '</tr>';
-                                }
-                            }
-                            ?>
+                        <tbody id="resultadoBusca">
+                            <!-- Resultados da busca serão inseridos aqui via JavaScript -->
                         </tbody>
                     </table>
                 </div>
@@ -194,497 +300,381 @@ include 'header.php';
     </div>
 </div>
 
-<!-- Modal de Cliente Rápido -->
-<div class="modal fade" id="modal-cliente-rapido" tabindex="-1" aria-labelledby="modal-cliente-rapido-label" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modal-cliente-rapido-label">Cadastro Rápido de Cliente</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="form-cliente-rapido">
-                    <div class="mb-3">
-                        <label for="cliente-nome" class="form-label">Nome *</label>
-                        <input type="text" class="form-control" id="cliente-nome" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="cliente-cpf-cnpj" class="form-label">CPF/CNPJ</label>
-                        <input type="text" class="form-control" id="cliente-cpf-cnpj">
-                    </div>
-                    <div class="mb-3">
-                        <label for="cliente-telefone" class="form-label">Telefone</label>
-                        <input type="text" class="form-control" id="cliente-telefone">
-                    </div>
-                    <div class="mb-3">
-                        <label for="cliente-email" class="form-label">E-mail</label>
-                        <input type="email" class="form-control" id="cliente-email">
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-salvar-cliente">Salvar Cliente</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<?php include 'footer.php'; ?>
-
-<!-- Script para o PDV - Colocado no final para garantir que o jQuery já foi carregado -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Garante que o código só será executado depois que o DOM estiver carregado
-    // e após todos os scripts incluídos no footer.php serem carregados
-    
-    // Inicializar DataTable apenas quando o modal for aberto
-    let dataTableInitialized = false;
-    $('#modal-buscar-produtos').on('shown.bs.modal', function () {
-        if (!dataTableInitialized) {
-            $('#tabela-busca-produtos').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json"
-                }
-            });
-            dataTableInitialized = true;
-        }
-    });
-    
-    // Código do PDV
+    // Variáveis globais
     let produtos = [];
-    let subtotal = 0;
-    let desconto = 0;
-    let total = 0;
+    let itensVenda = [];
+    let produtoSelecionado = null;
     
-    // Buscar produto pelo código
-    $("#btn-buscar-produto").click(function() {
-        buscarProduto();
-    });
-    
-    $("#codigo-produto").keypress(function(e) {
-        if (e.which == 13) {
-            buscarProduto();
+    // Quando a página carregar
+    $(document).ready(function() {
+        // Eventos de busca de produtos
+        $('#btnBuscarCodigo').click(buscarProdutoPorCodigo);
+        $('#codigoProduto').keypress(function(e) {
+            if (e.which === 13) buscarProdutoPorCodigo();
+        });
+        
+        $('#btnBuscarNome').click(buscarProdutosPorNome);
+        $('#nomeProduto').keypress(function(e) {
+            if (e.which === 13) buscarProdutosPorNome();
+        });
+        
+        // Eventos do modal de quantidade
+        $('#diminuirQtd').click(function() {
+            let qtd = parseInt($('#quantidade').val());
+            if (qtd > 1) $('#quantidade').val(qtd - 1);
+        });
+        
+        $('#aumentarQtd').click(function() {
+            let qtd = parseInt($('#quantidade').val());
+            let estoque = parseInt($('#modalProdutoEstoque').text());
+            if (qtd < estoque) $('#quantidade').val(qtd + 1);
+        });
+        
+        $('#btnAdicionarProduto').click(adicionarProdutoVenda);
+        
+        // Eventos do resumo da venda
+        $('#desconto').on('input', calcularTotal);
+        
+        // Botões de ação final
+        $('#btnLimpar').click(limparVenda);
+        $('#btnFinalizar').click(finalizarVenda);
+        $('#btnCancelar').click(function() {
+            if (confirm('Deseja realmente cancelar esta venda?')) {
+                window.location.href = 'index.php';
+            }
+        });
+        
+        // Em telas menores, adicionar aviso quando itens são adicionados
+        // pois a tabela pode ficar fora da área visível
+        if (window.innerWidth < 992) {
+            $('body').append('<div id="toastContainer" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;"></div>');
         }
     });
     
-    function buscarProduto() {
-        const codigo = $("#codigo-produto").val();
+    // Função para buscar produto por código
+    function buscarProdutoPorCodigo() {
+        const codigo = $('#codigoProduto').val().trim();
         if (!codigo) return;
         
         $.ajax({
-            url: 'ajax_pdv.php',
+            url: 'ajax/buscar_produto.php',
             type: 'POST',
-            data: {
-                acao: 'buscar_produto',
-                codigo: codigo
-            },
-            // Importante: não usar dataType: 'json' para processar manualmente
-            complete: function(xhr) {
-                try {
-                    let response = xhr.responseText;
-                    console.log('Resposta original:', response);
-                    
-                    // Remover qualquer BOM no início
-                    if (response.charCodeAt(0) === 0xFEFF || response.charCodeAt(0) === 65279) {
-                        response = response.substring(1);
-                    }
-                    
-                    // Converter para objeto JSON
-                    const data = JSON.parse(response);
-                    console.log('JSON processado:', data);
-                    
-                    if (data.status === 'success' && data.produto) {
-                        // Converter preço para número
-                        data.produto.preco_venda = parseFloat(data.produto.preco_venda);
-                        adicionarProduto(data.produto);
-                    } else {
-                        alert(data.message || 'Erro ao processar produto');
-                    }
-                } catch (e) {
-                    console.error('Erro ao processar resposta:', e);
-                    alert('Erro ao processar resposta do servidor: ' + e.message);
+            data: { codigo: codigo },
+            dataType: 'json',
+            success: function(data) {
+                if (data.error) {
+                    mostrarToast('Erro', data.error, 'danger');
+                    return;
                 }
                 
-                // Limpar campo e focar nele novamente
-                $("#codigo-produto").val('').focus();
+                produtoSelecionado = data;
+                exibirModalQuantidade(data);
+            },
+            error: function() {
+                mostrarToast('Erro', 'Erro ao buscar o produto. Tente novamente.', 'danger');
             }
         });
     }
     
-    // Adicionar produto ao clicar em selecionar na modal
-    $(document).on('click', '.btn-selecionar-produto', function() {
-        const id = $(this).data('id');
-        const codigo = $(this).data('codigo');
-        const nome = $(this).data('nome');
-        const preco = $(this).data('preco');
+    // Função para buscar produtos por nome
+    function buscarProdutosPorNome() {
+        const nome = $('#nomeProduto').val().trim();
+        if (!nome) return;
         
-        const produto = {
-            id: id,
-            codigo: codigo,
-            nome: nome,
-            preco_venda: parseFloat(preco), // Converter explicitamente para número
-            quantidade: 1
-        };
-        
-        adicionarProduto(produto);
-        $('#modal-buscar-produtos').modal('hide');
-    });
-    
-    // Adicionar produto à tabela
-    function adicionarProduto(produto) {
-        // Garantir que preço seja um número
-        produto.preco_venda = parseFloat(produto.preco_venda);
-        
-        // Verificar se o produto já está na lista
-        let existe = false;
-        for (let i = 0; i < produtos.length; i++) {
-            if (produtos[i].id == produto.id) {
-                produtos[i].quantidade++;
-                atualizarLinhaProduto(i);
-                existe = true;
-                break;
+        $.ajax({
+            url: 'ajax/buscar_produtos.php',
+            type: 'POST',
+            data: { nome: nome },
+            dataType: 'json',
+            success: function(data) {
+                if (data.error) {
+                    mostrarToast('Erro', data.error, 'danger');
+                    return;
+                }
+                
+                produtos = data;
+                exibirResultadosBusca(data);
+            },
+            error: function() {
+                mostrarToast('Erro', 'Erro ao buscar produtos. Tente novamente.', 'danger');
             }
-        }
+        });
+    }
+    
+    // Exibir modal com resultados da busca
+    function exibirResultadosBusca(produtos) {
+        let html = '';
         
-        // Se não existir, adiciona
-        if (!existe) {
-            produto.quantidade = 1;
-            const indice = produtos.length;
-            produtos.push(produto);
-            
-            const linha = `
-                <tr id="produto-${indice}">
-                    <td>${produto.codigo}</td>
-                    <td>${produto.nome}</td>
-                    <td>R$ ${produto.preco_venda.toFixed(2).replace('.', ',')}</td>
+        if (produtos.length === 0) {
+            html = '<tr><td colspan="5" class="text-center">Nenhum produto encontrado</td></tr>';
+        } else {
+            produtos.forEach(function(p) {
+                html += `
+                <tr>
+                    <td><span class="badge bg-secondary">${p.codigo}</span></td>
+                    <td>${p.nome}</td>
+                    <td>R$ ${parseFloat(p.preco_venda).toFixed(2).replace('.', ',')}</td>
+                    <td>${p.estoque_atual}</td>
                     <td>
-                        <div class="input-group input-group-sm">
-                            <button class="btn btn-outline-secondary btn-diminuir" data-indice="${indice}">-</button>
-                            <input type="text" class="form-control text-center input-quantidade" data-indice="${indice}" value="1">
-                            <button class="btn btn-outline-secondary btn-aumentar" data-indice="${indice}">+</button>
-                        </div>
-                    </td>
-                    <td>R$ ${produto.preco_venda.toFixed(2).replace('.', ',')}</td>
-                    <td>
-                        <button class="btn btn-sm btn-danger btn-remover" data-indice="${indice}">
-                            <i class="fas fa-trash"></i>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="selecionarProduto(${p.id})">
+                            <i class="fas fa-plus-circle"></i>
                         </button>
                     </td>
                 </tr>
-            `;
-            
-            $("#tabela-produtos tbody").append(linha);
+                `;
+            });
         }
         
-        atualizarTotais();
+        $('#resultadoBusca').html(html);
+        $('#modalBuscaProdutos').modal('show');
     }
     
-    // Atualizar linha de produto quando a quantidade muda
-    function atualizarLinhaProduto(indice) {
-        const produto = produtos[indice];
-        const subtotal = produto.quantidade * produto.preco_venda;
-        
-        $(`#produto-${indice} td:eq(3) input`).val(produto.quantidade);
-        $(`#produto-${indice} td:eq(4)`).text(`R$ ${subtotal.toFixed(2).replace('.', ',')}`);
+    // Selecionar produto da lista de resultados
+    function selecionarProduto(id) {
+        produtoSelecionado = produtos.find(p => p.id == id);
+        $('#modalBuscaProdutos').modal('hide');
+        exibirModalQuantidade(produtoSelecionado);
     }
     
-    // Aumentar quantidade
-    $(document).on('click', '.btn-aumentar', function() {
-        const indice = $(this).data('indice');
-        produtos[indice].quantidade++;
-        atualizarLinhaProduto(indice);
-        atualizarTotais();
-    });
-    
-    // Diminuir quantidade
-    $(document).on('click', '.btn-diminuir', function() {
-        const indice = $(this).data('indice');
-        if (produtos[indice].quantidade > 1) {
-            produtos[indice].quantidade--;
-            atualizarLinhaProduto(indice);
-            atualizarTotais();
-        }
-    });
-    
-    // Alterar quantidade manualmente
-    $(document).on('change', '.input-quantidade', function() {
-        const indice = $(this).data('indice');
-        let quantidade = parseInt($(this).val());
+    // Exibir modal para informar quantidade
+    function exibirModalQuantidade(produto) {
+        $('#modalProdutoNome').text(produto.nome);
+        $('#modalProdutoPreco').text(`R$ ${parseFloat(produto.preco_venda).toFixed(2).replace('.', ',')}`);
+        $('#modalProdutoEstoque').text(produto.estoque_atual);
+        $('#quantidade').val(1);
+        $('#modalQuantidade').modal('show');
         
-        if (isNaN(quantidade) || quantidade < 1) {
-            quantidade = 1;
-            $(this).val(quantidade);
-        }
-        
-        produtos[indice].quantidade = quantidade;
-        atualizarLinhaProduto(indice);
-        atualizarTotais();
-    });
-    
-    // Remover produto
-    $(document).on('click', '.btn-remover', function() {
-        const indice = $(this).data('indice');
-        produtos.splice(indice, 1);
-        
-        // Reconstruir tabela
-        $("#tabela-produtos tbody").empty();
-        for (let i = 0; i < produtos.length; i++) {
-            const produto = produtos[i];
-            // Garantir que preço é número
-            produto.preco_venda = parseFloat(produto.preco_venda);
-            const subtotal = produto.quantidade * produto.preco_venda;
-            
-            const linha = `
-                <tr id="produto-${i}">
-                    <td>${produto.codigo}</td>
-                    <td>${produto.nome}</td>
-                    <td>R$ ${produto.preco_venda.toFixed(2).replace('.', ',')}</td>
-                    <td>
-                        <div class="input-group input-group-sm">
-                            <button class="btn btn-outline-secondary btn-diminuir" data-indice="${i}">-</button>
-                            <input type="text" class="form-control text-center input-quantidade" data-indice="${i}" value="${produto.quantidade}">
-                            <button class="btn btn-outline-secondary btn-aumentar" data-indice="${i}">+</button>
-                        </div>
-                    </td>
-                    <td>R$ ${subtotal.toFixed(2).replace('.', ',')}</td>
-                    <td>
-                        <button class="btn btn-sm btn-danger btn-remover" data-indice="${i}">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-            
-            $("#tabela-produtos tbody").append(linha);
-        }
-        
-        atualizarTotais();
-    });
-    
-    // Atualizar totais
-    function atualizarTotais() {
-        subtotal = 0;
-        for (let i = 0; i < produtos.length; i++) {
-            subtotal += produtos[i].quantidade * produtos[i].preco_venda;
-        }
-        
-        desconto = parseFloat($("#desconto").val()) || 0;
-        total = subtotal - desconto;
-        
-        $("#subtotal").val(`R$ ${subtotal.toFixed(2).replace('.', ',')}`);
-        $("#total").val(`R$ ${total.toFixed(2).replace('.', ',')}`);
-        
-        calcularTroco();
+        // Garantir que o valor digitado não exceda o estoque
+        $('#quantidade').attr('max', produto.estoque_atual);
     }
     
-    // Atualizar desconto
-    $("#desconto").change(function() {
-        desconto = parseFloat($(this).val()) || 0;
-        if (desconto > subtotal) {
-            desconto = subtotal;
-            $(this).val(desconto);
-        }
+    // Adicionar produto à venda
+    function adicionarProdutoVenda() {
+        if (!produtoSelecionado) return;
         
-        total = subtotal - desconto;
-        $("#total").val(`R$ ${total.toFixed(2).replace('.', ',')}`);
-        
-        calcularTroco();
-    });
-    
-    // Calcular troco
-    $("#recebido").change(function() {
-        calcularTroco();
-    });
-    
-    function calcularTroco() {
-        const recebido = parseFloat($("#recebido").val()) || 0;
-        let troco = recebido - total;
-        
-        if (troco < 0) troco = 0;
-        
-        $("#troco").val(`R$ ${troco.toFixed(2).replace('.', ',')}`);
-    }
-    
-    // Cadastro rápido de cliente
-    $("#btn-salvar-cliente").click(function() {
-        const nome = $("#cliente-nome").val().trim();
-        const cpf_cnpj = $("#cliente-cpf-cnpj").val().trim();
-        const telefone = $("#cliente-telefone").val().trim();
-        const email = $("#cliente-email").val().trim();
-        
-        if (!nome) {
-            alert("O nome do cliente é obrigatório!");
+        const quantidade = parseInt($('#quantidade').val());
+        if (quantidade <= 0 || quantidade > produtoSelecionado.estoque_atual) {
+            mostrarToast('Atenção', 'Quantidade inválida ou maior que o estoque disponível!', 'warning');
             return;
         }
         
+        // Verificar se o produto já está na lista
+        const index = itensVenda.findIndex(item => item.id == produtoSelecionado.id);
+        
+        if (index !== -1) {
+            // Atualizar quantidade
+            itensVenda[index].quantidade += quantidade;
+            itensVenda[index].subtotal = itensVenda[index].quantidade * itensVenda[index].preco_unitario;
+        } else {
+            // Adicionar novo item
+            itensVenda.push({
+                id: produtoSelecionado.id,
+                codigo: produtoSelecionado.codigo,
+                nome: produtoSelecionado.nome,
+                quantidade: quantidade,
+                preco_unitario: parseFloat(produtoSelecionado.preco_venda),
+                subtotal: quantidade * parseFloat(produtoSelecionado.preco_venda)
+            });
+        }
+        
+        atualizarTabelaItens();
+        calcularTotal();
+        $('#modalQuantidade').modal('hide');
+        
+        // Mostrar toast de confirmação em telas menores
+        if (window.innerWidth < 992) {
+            mostrarToast('Sucesso', `${quantidade}x ${produtoSelecionado.nome} adicionado!`, 'success');
+        }
+        
+        // Limpar campo de busca
+        $('#codigoProduto').val('').focus();
+        $('#nomeProduto').val('');
+    }
+    
+    // Atualizar tabela de itens
+    function atualizarTabelaItens() {
+        let html = '';
+        
+        if (itensVenda.length === 0) {
+            html = `
+            <tr class="no-items">
+                <td colspan="6" class="text-center py-4">
+                    <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+                    <p class="mb-0">Nenhum item adicionado à venda</p>
+                </td>
+            </tr>
+            `;
+            $('#btnFinalizar').prop('disabled', true);
+        } else {
+            itensVenda.forEach(function(item, index) {
+                html += `
+                <tr>
+                    <td><span class="badge bg-secondary">${item.codigo}</span></td>
+                    <td>${item.nome}</td>
+                    <td>${item.quantidade}</td>
+                    <td>R$ ${item.preco_unitario.toFixed(2).replace('.', ',')}</td>
+                    <td>R$ ${item.subtotal.toFixed(2).replace('.', ',')}</td>
+                    <td>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="removerItem(${index})">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                </tr>
+                `;
+            });
+            $('#btnFinalizar').prop('disabled', false);
+        }
+        
+        $('#itensVenda').html(html);
+        
+        // Em telas pequenas, role até o fim da tabela para mostrar o novo item
+        if (itensVenda.length > 0 && window.innerWidth < 992) {
+            const tableContainer = $('#itensVenda').closest('.table-responsive');
+            tableContainer.scrollTop(tableContainer[0].scrollHeight);
+        }
+    }
+    
+    // Remover item da venda
+    function removerItem(index) {
+        const item = itensVenda[index];
+        itensVenda.splice(index, 1);
+        atualizarTabelaItens();
+        calcularTotal();
+        
+        // Mostrar toast de confirmação em telas menores
+        if (window.innerWidth < 992) {
+            mostrarToast('Removido', `${item.nome} removido da venda!`, 'danger');
+        }
+    }
+    
+    // Calcular total da venda
+    function calcularTotal() {
+        let subtotal = 0;
+        itensVenda.forEach(item => {
+            subtotal += item.subtotal;
+        });
+        
+        const desconto = parseFloat($('#desconto').val()) || 0;
+        const total = subtotal - desconto;
+        
+        $('#subtotal').text(`R$ ${subtotal.toFixed(2).replace('.', ',')}`);
+        $('#total').text(`R$ ${total.toFixed(2).replace('.', ',')}`);
+    }
+    
+    // Limpar venda atual
+    function limparVenda() {
+        if (itensVenda.length === 0) return;
+        
+        if (confirm('Deseja realmente limpar todos os itens da venda?')) {
+            itensVenda = [];
+            $('#clienteId').val('');
+            $('#desconto').val(0);
+            $('#observacoes').val('');
+            atualizarTabelaItens();
+            calcularTotal();
+            
+            mostrarToast('Limpo', 'Todos os itens foram removidos!', 'warning');
+        }
+    }
+    
+    // Finalizar venda
+    function finalizarVenda() {
+        if (itensVenda.length === 0) {
+            mostrarToast('Atenção', 'Adicione pelo menos um produto à venda!', 'warning');
+            return;
+        }
+        
+        // Mostrar indicador de carregamento
+        $('#btnFinalizar').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processando...');
+        
+        // Preparar dados da venda
+        const venda = {
+            cliente_id: $('#clienteId').val() || null,
+            valor_total: parseFloat($('#total').text().replace('R$ ', '').replace(',', '.')),
+            desconto: parseFloat($('#desconto').val()) || 0,
+            forma_pagamento: $('input[name="formaPagamento"]:checked').val(),
+            status: 'finalizada',
+            observacoes: $('#observacoes').val(),
+            itens: itensVenda.map(item => ({
+                produto_id: item.id,
+                quantidade: item.quantidade,
+                preco_unitario: item.preco_unitario
+            }))
+        };
+        
+        // Enviar venda para o servidor
         $.ajax({
-            url: 'ajax_pdv.php',
+            url: 'ajax/finalizar_venda.php',
             type: 'POST',
-            data: {
-                acao: 'salvar_cliente',
-                nome: nome,
-                cpf_cnpj: cpf_cnpj,
-                telefone: telefone,
-                email: email
-            },
+            data: { venda: JSON.stringify(venda) },
             dataType: 'json',
             success: function(response) {
-                if (response.status === 'success') {
-                    // Adiciona cliente ao select e seleciona
-                    $("#cliente").append(`<option value="${response.cliente.id}">${response.cliente.nome}</option>`);
-                    $("#cliente").val(response.cliente.id);
-                    $("#modal-cliente-rapido").modal('hide');
-                    
-                    // Limpa formulário
-                    $("#cliente-nome").val('');
-                    $("#cliente-cpf-cnpj").val('');
-                    $("#cliente-telefone").val('');
-                    $("#cliente-email").val('');
-                } else {
-                    alert(response.message);
+                if (response.error) {
+                    mostrarToast('Erro', response.error, 'danger');
+                    $('#btnFinalizar').prop('disabled', false).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
+                    return;
                 }
+                
+                mostrarToast('Sucesso', 'Venda finalizada com sucesso!', 'success');
+                
+                // Redirecionar para a página de impressão ou nova venda
+                if (response.imprimir) {
+                    window.open(`imprimir_venda.php?id=${response.venda_id}`, '_blank');
+                }
+                
+                // Limpar venda atual
+                itensVenda = [];
+                $('#clienteId').val('');
+                $('#desconto').val(0);
+                $('#observacoes').val('');
+                atualizarTabelaItens();
+                calcularTotal();
+                
+                // Restaurar botão
+                $('#btnFinalizar').prop('disabled', true).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
+                
+                // Focar no campo de código
+                $('#codigoProduto').focus();
             },
-            error: function(xhr, status, error) {
-                console.error("Erro AJAX:", status, error);
-                console.error("Resposta:", xhr.responseText);
-                alert('Erro ao salvar cliente: ' + error);
+            error: function() {
+                mostrarToast('Erro', 'Erro ao finalizar a venda. Tente novamente.', 'danger');
+                $('#btnFinalizar').prop('disabled', false).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
             }
         });
-    });
-    
-// Finalizar venda
-$("#btn-finalizar-venda").click(function() {
-    if (produtos.length === 0) {
-        alert("Adicione pelo menos um produto à venda!");
-        return;
     }
     
-    const recebido = parseFloat($("#recebido").val()) || 0;
-    if (recebido < total && $("#forma-pagamento").val() === 'dinheiro') {
-        alert("O valor recebido é menor que o total da venda!");
-        return;
-    }
-    
-    const venda = {
-        cliente_id: $("#cliente").val() || null,
-        forma_pagamento: $("#forma-pagamento").val(),
-        valor_total: total,
-        desconto: desconto,
-        observacoes: $("#observacoes").val(),
-        itens: []
-    };
-    
-    for (let i = 0; i < produtos.length; i++) {
-        venda.itens.push({
-            produto_id: produtos[i].id,
-            quantidade: produtos[i].quantidade,
-            preco_unitario: produtos[i].preco_venda
-        });
-    }
-    
-    console.log("Enviando dados da venda:", venda);
-    
-    $.ajax({
-        url: 'ajax_pdv.php',
-        type: 'POST',
-        data: {
-            acao: 'finalizar_venda',
-            venda: JSON.stringify(venda)
-        },
-        dataType: 'text', // Importante: usar 'text' em vez de 'json'
-        success: function(responseText) {
-            console.log("Resposta original:", responseText);
-            
-            // Remover qualquer BOM ou caractere especial no início
-            let cleanResponse = responseText;
-            // Remove BOM e outros caracteres problemáticos
-            if (cleanResponse.charCodeAt(0) === 0xFEFF || cleanResponse.charCodeAt(0) === 65279) {
-                cleanResponse = cleanResponse.substring(1);
-            }
-            
-            try {
-                // Agora tentamos analisar a resposta limpa como JSON
-                const response = JSON.parse(cleanResponse);
-                console.log("JSON processado:", response);
-                
-                if (response.status === 'success') {
-                    alert("Venda finalizada com sucesso!");
-                    
-                    // Limpar venda
-                    produtos = [];
-                    $("#tabela-produtos tbody").empty();
-                    $("#cliente").val('');
-                    $("#forma-pagamento").val('dinheiro');
-                    $("#desconto").val('0');
-                    $("#recebido").val('0');
-                    $("#observacoes").val('');
-                    atualizarTotais();
-                    
-                    // Imprimir comprovante
-                    if (confirm("Deseja imprimir o comprovante?")) {
-                        window.open(`comprovante.php?id=${response.venda_id}`, '_blank');
-                    }
-                } else {
-                    alert(response.message || 'Erro ao finalizar venda!');
-                    console.error("Erro detalhado:", response);
-                }
-            } catch (e) {
-                console.error("Erro ao processar resposta JSON:", e);
-                console.error("Resposta original:", responseText);
-                console.error("Resposta limpa:", cleanResponse);
-                alert('Erro ao processar resposta do servidor. A venda pode ter sido finalizada, verifique o sistema.');
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error("Erro AJAX:", status, error);
-            console.error("Resposta:", xhr.responseText);
-            
-            // Tentar processar mesmo com erro
-            if (xhr.responseText && xhr.responseText.includes('"status":"success"')) {
-                alert("A venda parece ter sido concluída com sucesso, mas houve um erro na comunicação. Verifique se a venda foi registrada no sistema.");
-                
-                // Limpar venda em caso de sucesso provável
-                produtos = [];
-                $("#tabela-produtos tbody").empty();
-                $("#cliente").val('');
-                $("#forma-pagamento").val('dinheiro');
-                $("#desconto").val('0');
-                $("#recebido").val('0');
-                $("#observacoes").val('');
-                atualizarTotais();
-            } else {
-                alert('Erro de comunicação com o servidor: ' + error);
-            }
-        }
-    });
-});
-    
-    // Cancelar venda
-    $("#btn-cancelar-venda").click(function() {
-        if (produtos.length === 0) return;
+    // Função para mostrar toast
+    function mostrarToast(titulo, mensagem, tipo) {
+        const toast = `
+        <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-${tipo} text-white">
+                <strong class="me-auto">${titulo}</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                ${mensagem}
+            </div>
+        </div>
+        `;
         
-        if (confirm("Tem certeza que deseja cancelar esta venda?")) {
-            produtos = [];
-            $("#tabela-produtos tbody").empty();
-            $("#cliente").val('');
-            $("#forma-pagamento").val('dinheiro');
-            $("#desconto").val('0');
-            $("#recebido").val('0');
-            $("#observacoes").val('');
-            atualizarTotais();
+        $('#toastContainer').append(toast);
+        
+        // Remover toast após 3 segundos
+        setTimeout(function() {
+            $('#toastContainer .toast:first-child').remove();
+        }, 3000);
+    }
+    
+    // Ajustes responsivos
+    $(window).resize(function() {
+        // Ajusta a altura máxima da tabela em dispositivos móveis
+        if (window.innerWidth < 992) {
+            $('.table-responsive').css('max-height', (window.innerHeight * 0.4) + 'px');
+        } else {
+            $('.table-responsive').css('max-height', 'none');
         }
-    });
-    
-    // Busca de produtos na modal (sem DataTables)
-    $("#busca-produtos").keyup(function() {
-        const busca = $(this).val().toLowerCase();
-        $("#tabela-busca-produtos tbody tr").filter(function() {
-            $(this).toggle($(this).text().toLowerCase().indexOf(busca) > -1);
-        });
-    });
-    
-    // Foco no campo de código ao abrir a página
-    $("#codigo-produto").focus();
-});
+    }).resize(); // Executar no carregamento
 </script>
+
+<?php include 'footer.php'; ?>
