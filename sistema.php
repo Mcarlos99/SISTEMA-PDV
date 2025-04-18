@@ -1952,13 +1952,17 @@ class Venda {
     }
     
     // Adicionar venda
-    public function adicionar($dados) {
-        try {
-            // Log para debug
-            error_log("Iniciando adição de venda com dados: " . print_r($dados, true));
+public function adicionar($dados) {
+    try {
+        // Log para debug
+        error_log("Iniciando adição de venda com dados: " . print_r($dados, true));
             
-            // Inicia transação
+        // Verifica se já existe uma transação ativa antes de iniciar nova
+        $transacao_existente = $this->pdo->inTransaction();
+        if (!$transacao_existente) {
+            // Inicia transação somente se não houver uma ativa
             $this->pdo->beginTransaction();
+        }
             
             // Insere a venda
             $stmt = $this->pdo->prepare("
@@ -2037,7 +2041,11 @@ class Venda {
             }
             
             // Finaliza transação
+            //$this->pdo->commit();
+            // Só faz commit se foi a função quem iniciou a transação
+        if (!$transacao_existente) {
             $this->pdo->commit();
+        }
             
             // Registrar no log do sistema
             if (isset($GLOBALS['log'])) {
@@ -2061,12 +2069,21 @@ class Venda {
             
             return $venda_id;
             
+    } catch (Exception $e) {
+        // Só faz rollback se foi a função quem iniciou a transação
+        if (!$transacao_existente && $this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
+        error_log("Erro ao adicionar venda: " . $e->getMessage());
+        error_log("Trace: " . $e->getTraceAsString());
+        throw $e;
+            
         } catch (Exception $e) {
             // Desfaz transação em caso de erro
-            $this->pdo->rollBack();
-            error_log("Erro ao adicionar venda: " . $e->getMessage());
-            error_log("Trace: " . $e->getTraceAsString());
-            return false;
+           // $this->pdo->rollBack();
+           // error_log("Erro ao adicionar venda: " . $e->getMessage());
+        //    error_log("Trace: " . $e->getTraceAsString());
+         //   return false;
         }
     }
     // Cancelar venda
@@ -2450,6 +2467,492 @@ class Compra {
         }
     }
 }
+
+// Classe para gerenciar comandas
+class Comanda {
+    private $pdo;
+    private $produto;
+
+    public function __construct($pdo) {
+        $this->pdo = $pdo;
+        $this->produto = new Produto($pdo);
+    }
+
+    // Verificar se cliente tem comanda aberta
+    public function verificarComandaAberta($cliente_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT id, data_abertura, valor_total 
+                FROM comandas 
+                WHERE cliente_id = :cliente_id AND status = 'aberta' 
+                LIMIT 1
+            ");
+            $stmt->bindParam(':cliente_id', $cliente_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            return $stmt->fetch();
+        } catch (Exception $e) {
+            error_log("Erro ao verificar comanda aberta: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    // Abrir uma nova comanda
+    public function abrir($cliente_id, $observacoes = '') {
+        try {
+            // Verificar se já existe uma comanda aberta para este cliente
+            $comanda_existente = $this->verificarComandaAberta($cliente_id);
+            if ($comanda_existente) {
+                return $comanda_existente['id']; // Retorna a comanda já existente
+            }
+            
+            $usuario_id = $_SESSION['usuario_id'];
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO comandas 
+                (cliente_id, usuario_abertura_id, observacoes) 
+                VALUES 
+                (:cliente_id, :usuario_id, :observacoes)
+            ");
+            
+            $stmt->bindParam(':cliente_id', $cliente_id, PDO::PARAM_INT);
+            $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+            $stmt->bindParam(':observacoes', $observacoes, PDO::PARAM_STR);
+            
+            $stmt->execute();
+            $comanda_id = $this->pdo->lastInsertId();
+            
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Comanda', 
+                    "Comanda #{$comanda_id} aberta para cliente ID: {$cliente_id}"
+                );
+            }
+            
+            return $comanda_id;
+            
+        } catch (Exception $e) {
+            error_log("Erro ao abrir comanda: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    // Adicionar produto à comanda
+    public function adicionarProduto($comanda_id, $produto_id, $quantidade, $observacoes = '') {
+        try {
+            // Verificar se a comanda existe e está aberta
+            $stmt = $this->pdo->prepare("
+                SELECT id, status FROM comandas WHERE id = :id LIMIT 1
+            ");
+            $stmt->bindParam(':id', $comanda_id, PDO::PARAM_INT);
+            $stmt->execute();
+            $comanda = $stmt->fetch();
+            
+            if (!$comanda || $comanda['status'] != 'aberta') {
+                throw new Exception("Comanda não encontrada ou não está aberta.");
+            }
+            
+            // Buscar informações do produto
+            $produto = $this->produto->buscarPorId($produto_id);
+            if (!$produto) {
+                throw new Exception("Produto não encontrado.");
+            }
+            
+            // Verificar estoque
+            if ($produto['estoque_atual'] < $quantidade) {
+                throw new Exception("Estoque insuficiente para o produto.");
+            }
+            
+            // Adicionar o item à comanda
+            $usuario_id = $_SESSION['usuario_id'];
+            $preco_unitario = $produto['preco_venda'];
+            $subtotal = $preco_unitario * $quantidade;
+            
+            $stmt = $this->pdo->prepare("
+                INSERT INTO itens_comanda 
+                (comanda_id, produto_id, quantidade, preco_unitario, subtotal, usuario_id, observacoes) 
+                VALUES 
+                (:comanda_id, :produto_id, :quantidade, :preco_unitario, :subtotal, :usuario_id, :observacoes)
+            ");
+            
+            $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+            $stmt->bindParam(':produto_id', $produto_id, PDO::PARAM_INT);
+            $stmt->bindParam(':quantidade', $quantidade, PDO::PARAM_INT);
+            $stmt->bindParam(':preco_unitario', $preco_unitario);
+            $stmt->bindParam(':subtotal', $subtotal);
+            $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+            $stmt->bindParam(':observacoes', $observacoes);
+            
+            $stmt->execute();
+            $item_id = $this->pdo->lastInsertId();
+            
+            // Atualizar o valor total da comanda
+            $stmt = $this->pdo->prepare("
+                UPDATE comandas 
+                SET valor_total = valor_total + :subtotal 
+                WHERE id = :comanda_id
+            ");
+            $stmt->bindParam(':subtotal', $subtotal);
+            $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            // Baixar o estoque
+            $this->produto->registrarMovimentacao([
+                'produto_id' => $produto_id,
+                'tipo' => 'saida',
+                'quantidade' => $quantidade,
+                'observacao' => 'Adicionado à comanda #' . $comanda_id,
+                'origem' => 'ajuste_manual',
+                'documento_id' => $comanda_id
+            ]);
+            
+            return $item_id;
+            
+        } catch (Exception $e) {
+            error_log("Erro ao adicionar produto à comanda: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    // Listar produtos da comanda
+    public function listarProdutos($comanda_id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT i.*, p.nome AS produto_nome, p.codigo AS produto_codigo,
+                       DATE_FORMAT(i.data_adicao, '%d/%m/%Y %H:%i') AS data_formatada,
+                       u.nome AS usuario_nome
+                FROM itens_comanda i
+                LEFT JOIN produtos p ON i.produto_id = p.id
+                LEFT JOIN usuarios u ON i.usuario_id = u.id
+                WHERE i.comanda_id = :comanda_id
+                ORDER BY i.data_adicao DESC
+            ");
+            
+            $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            error_log("Erro ao listar produtos da comanda: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    // Buscar comanda por ID
+    public function buscarPorId($id) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT c.*, 
+                       cl.nome AS cliente_nome,
+                       u1.nome AS usuario_abertura_nome,
+                       u2.nome AS usuario_fechamento_nome,
+                       DATE_FORMAT(c.data_abertura, '%d/%m/%Y %H:%i') AS data_abertura_formatada,
+                       DATE_FORMAT(c.data_fechamento, '%d/%m/%Y %H:%i') AS data_fechamento_formatada
+                FROM comandas c
+                LEFT JOIN clientes cl ON c.cliente_id = cl.id
+                LEFT JOIN usuarios u1 ON c.usuario_abertura_id = u1.id
+                LEFT JOIN usuarios u2 ON c.usuario_fechamento_id = u2.id
+                WHERE c.id = :id
+                LIMIT 1
+            ");
+            
+            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            return $stmt->fetch();
+        } catch (Exception $e) {
+            error_log("Erro ao buscar comanda por ID: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    // Listar comandas
+    public function listar($filtro = null) {
+        try {
+            $sql = "
+                SELECT c.*, 
+                       cl.nome AS cliente_nome,
+                       DATE_FORMAT(c.data_abertura, '%d/%m/%Y %H:%i') AS data_abertura_formatada,
+                       DATE_FORMAT(c.data_fechamento, '%d/%m/%Y %H:%i') AS data_fechamento_formatada
+                FROM comandas c
+                LEFT JOIN clientes cl ON c.cliente_id = cl.id
+                WHERE 1=1
+            ";
+            
+            $params = [];
+            
+            if ($filtro && isset($filtro['status']) && $filtro['status']) {
+                $sql .= " AND c.status = :status";
+                $params[':status'] = $filtro['status'];
+            }
+            
+            if ($filtro && isset($filtro['cliente_id']) && $filtro['cliente_id']) {
+                $sql .= " AND c.cliente_id = :cliente_id";
+                $params[':cliente_id'] = $filtro['cliente_id'];
+            }
+            
+            $sql .= " ORDER BY c.data_abertura DESC";
+            
+            $stmt = $this->pdo->prepare($sql);
+            
+            foreach ($params as $param => $value) {
+                $stmt->bindValue($param, $value);
+            }
+            
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            error_log("Erro ao listar comandas: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    // Fechar comanda e gerar venda
+public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoes = '') {
+    try {
+        // Inicia transação
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+        }
+        
+        // Verifica se a comanda existe e está aberta
+        $comanda = $this->buscarPorId($comanda_id);
+        if (!$comanda || $comanda['status'] != 'aberta') {
+            throw new Exception("Comanda não encontrada ou não está aberta.");
+        }
+        
+        // Busca itens da comanda
+        $itens = $this->listarProdutos($comanda_id);
+        if (empty($itens)) {
+            throw new Exception("Comanda vazia. Não é possível fechá-la.");
+        }
+        
+        // Atualiza status da comanda
+        $usuario_id = $_SESSION['usuario_id'];
+        $stmt = $this->pdo->prepare("
+            UPDATE comandas SET
+                status = 'fechada',
+                data_fechamento = NOW(),
+                usuario_fechamento_id = :usuario_id,
+                observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :observacoes)
+            WHERE id = :id
+        ");
+        
+        $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        $stmt->bindParam(':observacoes', $observacoes);
+        $stmt->bindParam(':id', $comanda_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        // Cria uma venda a partir da comanda
+        $venda = new Venda($this->pdo);
+        
+        $valor_total = $comanda['valor_total'] - $desconto;
+        
+        $dados_venda = [
+            'cliente_id' => $comanda['cliente_id'],
+            'valor_total' => $valor_total,
+            'desconto' => $desconto,
+            'forma_pagamento' => $forma_pagamento,
+            'status' => 'finalizada',
+            'observacoes' => 'Venda gerada a partir da comanda #' . $comanda_id . 
+                             ($observacoes ? "\n" . $observacoes : ''),
+            'itens' => []
+        ];
+        
+        // Prepara os itens para a venda
+        foreach ($itens as $item) {
+            $dados_venda['itens'][] = [
+                'produto_id' => $item['produto_id'],
+                'quantidade' => $item['quantidade'],
+                'preco_unitario' => $item['preco_unitario']
+            ];
+        }
+        
+        $venda_id = $venda->adicionar($dados_venda);
+        
+        // Associa a venda à comanda
+        if ($venda_id) {
+            $stmt = $this->pdo->prepare("
+                UPDATE vendas SET comanda_id = :comanda_id WHERE id = :venda_id
+            ");
+            $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+            $stmt->bindParam(':venda_id', $venda_id, PDO::PARAM_INT);
+            $stmt->execute();
+        }
+        
+        // Finaliza transação
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->commit();
+        }
+        
+        // Registrar no log do sistema
+        if (isset($GLOBALS['log'])) {
+            $GLOBALS['log']->registrar(
+                'Comanda', 
+                "Comanda #{$comanda_id} fechada e convertida na venda #{$venda_id}"
+            );
+        }
+        
+        return [
+            'comanda_id' => $comanda_id,
+            'venda_id' => $venda_id
+        ];
+        
+    } catch (Exception $e) {
+        // Desfaz transação em caso de erro
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
+        error_log("Erro ao fechar comanda: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+    // Cancelar comanda
+    public function cancelar($comanda_id, $observacoes = '') {
+        try {
+            // Inicia transação
+            $this->pdo->beginTransaction();
+            
+            // Verifica se a comanda existe e está aberta
+            $comanda = $this->buscarPorId($comanda_id);
+            if (!$comanda) {
+                throw new Exception("Comanda não encontrada.");
+            }
+            
+            if ($comanda['status'] == 'fechada') {
+                throw new Exception("Comanda já está fechada. Não é possível cancelar.");
+            }
+            
+            if ($comanda['status'] == 'cancelada') {
+                throw new Exception("Comanda já está cancelada.");
+            }
+            
+            // Busca itens da comanda
+            $itens = $this->listarProdutos($comanda_id);
+            
+            // Atualiza status da comanda
+            $usuario_id = $_SESSION['usuario_id'];
+            $stmt = $this->pdo->prepare("
+                UPDATE comandas SET
+                    status = 'cancelada',
+                    data_fechamento = NOW(),
+                    usuario_fechamento_id = :usuario_id,
+                    observacoes = CONCAT(IFNULL(observacoes, ''), '\nCancelada: ', :observacoes)
+                WHERE id = :id
+            ");
+            
+            $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+            $stmt->bindParam(':observacoes', $observacoes);
+            $stmt->bindParam(':id', $comanda_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            // Estorna o estoque dos produtos
+            foreach ($itens as $item) {
+                $this->produto->registrarMovimentacao([
+                    'produto_id' => $item['produto_id'],
+                    'tipo' => 'entrada',
+                    'quantidade' => $item['quantidade'],
+                    'observacao' => 'Estorno por cancelamento da comanda #' . $comanda_id,
+                    'origem' => 'ajuste_manual',
+                    'documento_id' => $comanda_id
+                ]);
+            }
+            
+            // Finaliza transação
+            $this->pdo->commit();
+            
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Comanda', 
+                    "Comanda #{$comanda_id} cancelada"
+                );
+            }
+            
+            return true;
+            
+        } catch (Exception $e) {
+            // Desfaz transação em caso de erro
+            $this->pdo->rollBack();
+            error_log("Erro ao cancelar comanda: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    // Remover produto da comanda
+    public function removerProduto($item_id, $observacoes = '') {
+        try {
+            // Inicia transação
+            $this->pdo->beginTransaction();
+            
+            // Busca informações do item
+            $stmt = $this->pdo->prepare("
+                SELECT i.*, c.status 
+                FROM itens_comanda i
+                JOIN comandas c ON i.comanda_id = c.id
+                WHERE i.id = :id LIMIT 1
+            ");
+            $stmt->bindParam(':id', $item_id, PDO::PARAM_INT);
+            $stmt->execute();
+            $item = $stmt->fetch();
+            
+            if (!$item) {
+                throw new Exception("Item não encontrado.");
+            }
+            
+            if ($item['status'] != 'aberta') {
+                throw new Exception("Não é possível remover produtos de uma comanda que não está aberta.");
+            }
+            
+            // Estorna o estoque
+            $this->produto->registrarMovimentacao([
+                'produto_id' => $item['produto_id'],
+                'tipo' => 'entrada',
+                'quantidade' => $item['quantidade'],
+                'observacao' => 'Estorno por remoção de item da comanda #' . $item['comanda_id'],
+                'origem' => 'ajuste_manual',
+                'documento_id' => $item['comanda_id']
+            ]);
+            
+            // Atualiza o valor total da comanda
+            $stmt = $this->pdo->prepare("
+                UPDATE comandas 
+                SET valor_total = valor_total - :subtotal 
+                WHERE id = :comanda_id
+            ");
+            $stmt->bindParam(':subtotal', $item['subtotal']);
+            $stmt->bindParam(':comanda_id', $item['comanda_id'], PDO::PARAM_INT);
+            $stmt->execute();
+            
+            // Remove o item
+            $stmt = $this->pdo->prepare("DELETE FROM itens_comanda WHERE id = :id");
+            $stmt->bindParam(':id', $item_id, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            // Finaliza transação
+            $this->pdo->commit();
+            
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Comanda', 
+                    "Item removido da comanda #{$item['comanda_id']}"
+                );
+            }
+            
+            return true;
+            
+        } catch (Exception $e) {
+            // Desfaz transação em caso de erro
+            $this->pdo->rollBack();
+            error_log("Erro ao remover produto da comanda: " . $e->getMessage());
+            throw $e;
+        }
+    }
+}
+
 
 // Classe para gerenciar logs do sistema
 class LogSistema {

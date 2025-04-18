@@ -36,3 +36,5 @@ $config_empresa = new ConfiguracaoEmpresa($pdo);
 $config_sistema = new ConfiguracaoSistema($pdo);
 // Inicializa a classe Caixa
 $caixa = new Caixa($pdo);
+// Inicializa a classe Comanda
+$comanda = new Comanda($pdo);

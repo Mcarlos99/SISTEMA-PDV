@@ -132,6 +132,11 @@ if (!isset($_SESSION['usuario_id'])) {
                         </a>
                     </li>
                     <li class="nav-item">
+                      <a class="nav-link <?php echo (strpos($_SERVER['PHP_SELF'], 'comandas.php') !== false) ? 'active' : ''; ?>" href="comandas.php">
+                      <i class="fas fa-clipboard-list me-2"></i><span>Comandas</span>
+                      </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'vendas.php' ? 'active' : ''; ?>" href="vendas.php">
                             <i class="fas fa-shopping-cart"></i> Vendas
                         </a>
