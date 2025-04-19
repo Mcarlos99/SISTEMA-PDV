@@ -80,8 +80,9 @@ function exibirAlerta() {
     }
 }
 
-// Função para formatar valor monetário
 function formatarDinheiro($valor) {
+    // Forçar o valor para float
+    $valor = floatval($valor);
     return 'R$ ' . number_format($valor, 2, ',', '.');
 }
 
@@ -2240,7 +2241,10 @@ class Compra {
     public function listar() {
         try {
             $stmt = $this->pdo->query("
-                SELECT c.*, f.nome AS fornecedor_nome, u.nome AS usuario_nome, 
+                SELECT c.*, 
+                f.nome AS fornecedor_nome, 
+                u.nome AS usuario_nome,
+                FORMAT(c.valor_total, 2) AS valor_total, 
                 DATE_FORMAT(c.data_compra, '%d/%m/%Y') AS data_formatada
                 FROM compras c
                 LEFT JOIN fornecedores f ON c.fornecedor_id = f.id
