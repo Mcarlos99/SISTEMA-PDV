@@ -51,8 +51,22 @@ if ($acao == 'fechar_caixa' && isset($_POST['valor_final'])) {
             $mensagem = 'Caixa fechado sem diferenças!';
         }
         
+        // Salvar os dados de fechamento na sessão
+        $_SESSION['fechamento_caixa'] = [
+            'caixa_id' => $caixa_aberto['id'],
+            'valor_inicial' => $resultado['valor_inicial'],
+            'valor_final' => $valor_final,
+            'valor_vendas' => $resultado['valor_vendas'],
+            'valor_sangrias' => $resultado['valor_sangrias'],
+            'valor_suprimentos' => $resultado['valor_suprimentos'],
+            'valor_esperado' => $resultado['valor_esperado'],
+            'diferenca' => $diferenca
+        ];
+        
         alerta($mensagem, $tipo_alerta);
-        header('Location: caixa.php');
+        
+        // Redirecionar para a página de fechamento de caixa com o relatório para impressão
+        header('Location: fechamento_caixa.php');
         exit;
     } catch (Exception $e) {
         alerta($e->getMessage(), 'danger');
@@ -585,7 +599,7 @@ include 'header.php';
                     $saldo_calculado = $valor_inicial + $total_vendas + $total_suprimentos - $total_sangrias;
                     ?>
                     
-                    <div class="alert alert-info mb-4">
+                    <div class="mb-4">
                         <h6 class="mb-2">Resumo do Caixa</h6>
                         <div class="row">
                             <div class="col-md-6">

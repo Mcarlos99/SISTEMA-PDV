@@ -219,7 +219,7 @@ include 'header.php';
             
             <div class="mt-4 text-center">
                 <p class="mb-1">Fechamento realizado em <?php echo date('d/m/Y H:i:s'); ?></p>
-                <p class="small text-muted">Sistema PDV v1.0</p>
+                <p class="small text-muted">Mauro Carlos |94| 981709809 - Sistema PDV v1.0</p>
             </div>
         </div>
     </div>
