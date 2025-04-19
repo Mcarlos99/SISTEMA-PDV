@@ -19,7 +19,57 @@ if ($caixa->verificarCaixaNecessario()) {
 $titulo_pagina = 'PDV - Ponto de Venda';
 include 'header.php';
 ?>
+<style>
+/* Estilos para avisos de produtos não encontrados */
+.empty-results {
+    padding: 25px;
+    text-align: center;
+}
 
+.empty-results i {
+    display: block;
+    margin-bottom: 15px;
+    color: #ccc;
+}
+
+.empty-results h5 {
+    margin-bottom: 10px;
+    color: #6c757d;
+}
+
+.empty-results p {
+    color: #888;
+    max-width: 80%;
+    margin: 0 auto;
+}
+
+/* Efeito de carregamento para campos de busca */
+.is-loading {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="20" height="20"><circle cx="50" cy="50" r="40" stroke="%236c757d" stroke-width="8" fill="none" stroke-dasharray="60 20" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="1s" repeatCount="indefinite"/></circle></svg>');
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 20px;
+}
+
+/* Efeito para campos inválidos e válidos */
+.is-invalid {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25) !important;
+}
+
+.is-valid {
+    border-color: #198754 !important;
+    box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25) !important;
+}
+
+/* Estilo para toast fixo na tela */
+#toastContainer {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+ </style>   
 <div class="container-fluid">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
         <h2 class="mb-3 mb-md-0">
@@ -352,55 +402,156 @@ include 'header.php';
         }
     });
     
-    // Função para buscar produto por código
-    function buscarProdutoPorCodigo() {
-        const codigo = $('#codigoProduto').val().trim();
-        if (!codigo) return;
-        
-        $.ajax({
-            url: 'ajax/buscar_produto.php',
-            type: 'POST',
-            data: { codigo: codigo },
-            dataType: 'json',
-            success: function(data) {
-                if (data.error) {
-                    mostrarToast('Erro', data.error, 'danger');
-                    return;
-                }
+// Função para buscar produto por código (com aviso melhorado)
+function buscarProdutoPorCodigo() {
+    const codigo = $('#codigoProduto').val().trim();
+    if (!codigo) return;
+    
+    // Mostrar indicador de carregamento
+    $('#codigoProduto').addClass('is-loading');
+    
+    $.ajax({
+        url: 'ajax_pdv.php',
+        type: 'POST',
+        data: { 
+            acao: 'buscar_produto',
+            codigo: codigo 
+        },
+        dataType: 'json',
+        success: function(data) {
+            // Remover indicador de carregamento
+            $('#codigoProduto').removeClass('is-loading');
+            
+            if (data.status === 'error') {
+                // Mostrar mensagem de produto não encontrado
+                mostrarToast('Produto não encontrado', 'Nenhum produto encontrado com o código: ' + codigo, 'warning');
                 
-                produtoSelecionado = data;
-                exibirModalQuantidade(data);
-            },
-            error: function() {
-                mostrarToast('Erro', 'Erro ao buscar o produto. Tente novamente.', 'danger');
+                // Destacar o campo com animação "shake" para chamar atenção
+                $('#codigoProduto').addClass('is-invalid').effect('shake', { times: 2, distance: 5 }, 300, function() {
+                    // Remover a classe após a animação
+                    setTimeout(function() {
+                        $('#codigoProduto').removeClass('is-invalid');
+                    }, 2000);
+                });
+                
+                return;
             }
-        });
+            
+            produtoSelecionado = data.produto;
+            exibirModalQuantidade(produtoSelecionado);
+            
+            // Limpar o campo após sucesso (opcional)
+            $('#codigoProduto').val('');
+        },
+        error: function(xhr, status, error) {
+            // Remover indicador de carregamento
+            $('#codigoProduto').removeClass('is-loading');
+            
+            console.error("Erro AJAX:", xhr.responseText);
+            console.error("Status:", status);
+            console.error("Erro:", error);
+            mostrarToast('Erro', 'Erro ao buscar o produto. Tente novamente.', 'danger');
+        }
+    });
+}
+
+// Função para buscar produtos por nome (com aviso melhorado)
+function buscarProdutosPorNome() {
+    const nome = $('#nomeProduto').val().trim();
+    if (!nome) return;
+    
+    // Mostrar indicador de carregamento
+    $('#nomeProduto').addClass('is-loading');
+    
+    $.ajax({
+        url: 'ajax_pdv.php',
+        type: 'POST',
+        data: { 
+            acao: 'buscar_produtos_por_nome',
+            nome: nome 
+        },
+        dataType: 'json',
+        success: function(data) {
+            // Remover indicador de carregamento
+            $('#nomeProduto').removeClass('is-loading');
+            
+            if (data.status === 'error') {
+                // Mostrar mensagem de nenhum produto encontrado mais amigável
+                mostrarToast('Nenhum resultado', 'Nenhum produto encontrado com o nome: ' + nome, 'warning');
+                
+                // Exibir resultado vazio com mensagem amigável
+                let html = `
+                <tr>
+                    <td colspan="5" class="text-center py-4">
+                        <div class="empty-results">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">Nenhum produto encontrado</h5>
+                            <p class="text-muted">Tente buscar com outro nome ou verifique se o produto está cadastrado.</p>
+                        </div>
+                    </td>
+                </tr>
+                `;
+                $('#resultadoBusca').html(html);
+                $('#modalBuscaProdutos').modal('show');
+                return;
+            }
+            
+            produtos = data.produtos;
+            exibirResultadosBusca(produtos);
+            
+            // Destacar visualmente o sucesso (opcional)
+            $('#nomeProduto').addClass('is-valid');
+            setTimeout(function() {
+                $('#nomeProduto').removeClass('is-valid');
+            }, 2000);
+        },
+        error: function(xhr, status, error) {
+            // Remover indicador de carregamento
+            $('#nomeProduto').removeClass('is-loading');
+            
+            console.error("Erro AJAX:", xhr.responseText);
+            console.error("Status:", status);
+            console.error("Erro:", error);
+            mostrarToast('Erro', 'Erro ao buscar produtos. Tente novamente.', 'danger');
+        }
+    });
+}
+
+// Função auxiliar para exibir toast se ainda não existir
+function mostrarToast(titulo, mensagem, tipo) {
+    // Verificar se a função já existe no contexto global
+    if (typeof window.mostrarToast === 'function') {
+        window.mostrarToast(titulo, mensagem, tipo);
+        return;
     }
     
-    // Função para buscar produtos por nome
-    function buscarProdutosPorNome() {
-        const nome = $('#nomeProduto').val().trim();
-        if (!nome) return;
-        
-        $.ajax({
-            url: 'ajax/buscar_produtos.php',
-            type: 'POST',
-            data: { nome: nome },
-            dataType: 'json',
-            success: function(data) {
-                if (data.error) {
-                    mostrarToast('Erro', data.error, 'danger');
-                    return;
-                }
-                
-                produtos = data;
-                exibirResultadosBusca(data);
-            },
-            error: function() {
-                mostrarToast('Erro', 'Erro ao buscar produtos. Tente novamente.', 'danger');
-            }
-        });
+    // Se não existir container de toast, criar um
+    if ($('#toastContainer').length === 0) {
+        $('body').append('<div id="toastContainer" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;"></div>');
     }
+    
+    // Criar o toast
+    const toastId = 'toast-' + Math.random().toString(36).substr(2, 9);
+    const toast = `
+    <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-${tipo} text-white">
+            <strong class="me-auto">${titulo}</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            ${mensagem}
+        </div>
+    </div>
+    `;
+    
+    // Adicionar ao container
+    $('#toastContainer').append(toast);
+    
+    // Remover após 3 segundos
+    setTimeout(function() {
+        $(`#${toastId}`).remove();
+    }, 3000);
+}
     
     // Exibir modal com resultados da busca
     function exibirResultadosBusca(produtos) {

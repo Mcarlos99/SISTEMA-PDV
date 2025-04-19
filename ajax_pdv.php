@@ -1,9 +1,13 @@
-﻿<?php
+<?php
 // Remover qualquer saída antes dos cabeçalhos
-ob_clean();
+while (ob_get_level()) ob_end_clean();
+ob_start();
 
 require_once 'config.php';
 verificarLogin();
+
+// Qualquer saída gerada durante o include é capturada e descartada
+ob_clean();
 
 // Habilitar exibição de erros para depuração
 ini_set('display_errors', 1);
@@ -25,6 +29,9 @@ try {
     switch ($acao) {
         case 'buscar_produto':
             buscarProduto();
+            break;
+        case 'buscar_produtos_por_nome':
+            buscarProdutosPorNome();
             break;
         case 'salvar_cliente':
             salvarCliente();
@@ -83,6 +90,38 @@ function buscarProduto() {
     } catch (Exception $e) {
         error_log("Erro ao buscar produto: " . $e->getMessage());
         echo json_encode(['status' => 'error', 'message' => 'Erro ao buscar produto: ' . $e->getMessage()]);
+    }
+}
+
+// Função para buscar produtos por nome
+function buscarProdutosPorNome() {
+    try {
+        $nome = isset($_POST['nome']) ? $_POST['nome'] : '';
+        
+        if (empty($nome)) {
+            echo json_encode(['status' => 'error', 'message' => 'Nome do produto não informado']);
+            return;
+        }
+        
+        // Buscar produtos pelo nome (parcial)
+        $stmt = $GLOBALS['pdo']->prepare("
+            SELECT * FROM produtos 
+            WHERE nome LIKE :nome AND ativo = TRUE 
+            ORDER BY nome LIMIT 15
+        ");
+        $param = "%{$nome}%";
+        $stmt->bindParam(':nome', $param);
+        $stmt->execute();
+        $produtos = $stmt->fetchAll();
+        
+        if ($produtos && count($produtos) > 0) {
+            echo json_encode(['status' => 'success', 'produtos' => $produtos]);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Nenhum produto encontrado com este nome']);
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar produtos por nome: " . $e->getMessage());
+        echo json_encode(['status' => 'error', 'message' => 'Erro ao buscar produtos: ' . $e->getMessage()]);
     }
 }
 
