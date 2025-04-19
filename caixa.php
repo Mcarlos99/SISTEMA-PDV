@@ -1,596 +1,779 @@
 <?php
 require_once 'config.php';
-verificarLogin();
 
-// Inicializar a classe Caixa
-$caixa = new Caixa($pdo);
+// Verificar se o usuário está logado
+if (!isset($_SESSION['usuario_id'])) {
+    header('Location: login.php');
+    exit;
+}
+
+// Processar ações
+$acao = isset($_GET['acao']) ? $_GET['acao'] : '';
+$caixa_obj = new Caixa($pdo);
 
 // Verificar se existe um caixa aberto
-$caixa_aberto = $caixa->verificarCaixaAberto();
+$caixa_aberto = $caixa_obj->verificarCaixaAberto();
 
-// Processar formulário de abertura de caixa
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['abrir_caixa'])) {
+// Processar abertura de caixa
+if ($acao == 'abrir_caixa' && isset($_POST['valor_inicial'])) {
     try {
-        $valor_inicial = str_replace(['R$', '.', ','], ['', '', '.'], $_POST['valor_inicial']);
-        $observacoes = $_POST['observacoes'] ?? '';
+        $valor_inicial = floatval(str_replace(',', '.', $_POST['valor_inicial']));
+        $observacoes = isset($_POST['observacoes']) ? $_POST['observacoes'] : '';
         
-        $caixa_id = $caixa->abrir($valor_inicial, $observacoes);
+        $caixa_id = $caixa_obj->abrir($valor_inicial, $observacoes);
         
         alerta('Caixa aberto com sucesso!', 'success');
         header('Location: caixa.php');
         exit;
     } catch (Exception $e) {
-        alerta('Erro ao abrir caixa: ' . $e->getMessage(), 'danger');
+        alerta($e->getMessage(), 'danger');
     }
 }
 
-// Processar formulário de sangria
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['registrar_sangria'])) {
+// Processar fechamento de caixa
+if ($acao == 'fechar_caixa' && isset($_POST['valor_final'])) {
     try {
-        $valor = str_replace(['R$', '.', ','], ['', '', '.'], $_POST['valor_sangria']);
-        $observacoes = $_POST['observacoes_sangria'] ?? '';
+        $valor_final = floatval(str_replace(',', '.', $_POST['valor_final']));
+        $observacoes = isset($_POST['observacoes']) ? $_POST['observacoes'] : '';
         
-        $movimentacao_id = $caixa->registrarSangria($valor, $observacoes);
+        $resultado = $caixa_obj->fechar($caixa_aberto['id'], $valor_final, $observacoes);
+        
+        $diferenca = $resultado['diferenca'];
+        $tipo_alerta = 'success';
+        
+        if ($diferenca < 0) {
+            $tipo_alerta = 'danger';
+            $mensagem = 'Caixa fechado com diferença negativa de ' . formatarDinheiro(abs($diferenca)) . '!';
+        } else if ($diferenca > 0) {
+            $tipo_alerta = 'warning';
+            $mensagem = 'Caixa fechado com diferença positiva de ' . formatarDinheiro($diferenca) . '!';
+        } else {
+            $mensagem = 'Caixa fechado sem diferenças!';
+        }
+        
+        alerta($mensagem, $tipo_alerta);
+        header('Location: caixa.php');
+        exit;
+    } catch (Exception $e) {
+        alerta($e->getMessage(), 'danger');
+    }
+}
+
+// Processar sangria
+if ($acao == 'sangria' && isset($_POST['valor_sangria'])) {
+    try {
+        $valor = floatval(str_replace(',', '.', $_POST['valor_sangria']));
+        $observacoes = isset($_POST['observacoes_sangria']) ? $_POST['observacoes_sangria'] : '';
+        
+        $caixa_obj->registrarSangria($valor, $observacoes);
         
         alerta('Sangria registrada com sucesso!', 'success');
         header('Location: caixa.php');
         exit;
     } catch (Exception $e) {
-        alerta('Erro ao registrar sangria: ' . $e->getMessage(), 'danger');
+        alerta($e->getMessage(), 'danger');
     }
 }
 
-// Processar formulário de suprimento
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['registrar_suprimento'])) {
+// Processar suprimento
+if ($acao == 'suprimento' && isset($_POST['valor_suprimento'])) {
     try {
-        $valor = str_replace(['R$', '.', ','], ['', '', '.'], $_POST['valor_suprimento']);
-        $observacoes = $_POST['observacoes_suprimento'] ?? '';
+        $valor = floatval(str_replace(',', '.', $_POST['valor_suprimento']));
+        $observacoes = isset($_POST['observacoes_suprimento']) ? $_POST['observacoes_suprimento'] : '';
         
-        $movimentacao_id = $caixa->registrarSuprimento($valor, $observacoes);
+        $caixa_obj->registrarSuprimento($valor, $observacoes);
         
         alerta('Suprimento registrado com sucesso!', 'success');
         header('Location: caixa.php');
         exit;
     } catch (Exception $e) {
-        alerta('Erro ao registrar suprimento: ' . $e->getMessage(), 'danger');
+        alerta($e->getMessage(), 'danger');
     }
 }
 
-// Processar formulário de fechamento de caixa
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fechar_caixa'])) {
-    try {
-        $valor_final = str_replace(['R$', '.', ','], ['', '', '.'], $_POST['valor_final']);
-        $observacoes = $_POST['observacoes_fechamento'] ?? '';
-        
-        $resultado = $caixa->fechar($valor_final, $observacoes);
-        
-        $_SESSION['fechamento_caixa'] = $resultado;
-        
-        alerta('Caixa fechado com sucesso!', 'success');
-        header('Location: fechamento_caixa.php');
-        exit;
-    } catch (Exception $e) {
-        alerta('Erro ao fechar caixa: ' . $e->getMessage(), 'danger');
-    }
-}
-
-// Obter a lista de movimentações se o caixa estiver aberto
+// Listar movimentações se tiver caixa aberto
 $movimentacoes = [];
 if ($caixa_aberto) {
-    try {
-        $movimentacoes = $caixa->listarMovimentacoes($caixa_aberto['id']);
-    } catch (Exception $e) {
-        alerta('Erro ao listar movimentações: ' . $e->getMessage(), 'warning');
-    }
+    $movimentacoes = $caixa_obj->listarMovimentacoes($caixa_aberto['id']);
 }
 
 // Template da página
-$titulo_pagina = 'Controle de Caixa';
+$titulo_pagina = 'Controle de Caixa - Sistema PDV';
 include 'header.php';
 ?>
 
 <div class="container-fluid">
-    <h1 class="h3 mb-4">Controle de Caixa</h1>
-    
-    <?php if (!$caixa_aberto): ?>
-    <!-- Caixa Fechado - Formulário de Abertura -->
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="card-title mb-0"><i class="fas fa-cash-register me-2"></i> Abertura de Caixa</h5>
+    <!-- Cabeçalho da Página -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+        <div class="mb-3 mb-md-0">
+            <h2 class="mb-1">
+                <i class="fas fa-cash-register me-2 text-primary"></i>
+                Controle de Caixa
+            </h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="index.php">Painel</a></li>
+                    <li class="breadcrumb-item active">Caixa</li>
+                </ol>
+            </nav>
         </div>
-        <div class="card-body">
-            <form method="post" action="">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="valor_inicial" class="form-label">Valor Inicial (Fundo de Caixa)</label>
-                            <div class="input-group">
-                                <span class="input-group-text">R$</span>
-                                <input type="text" class="form-control" id="valor_inicial" name="valor_inicial" required
-                                       value="0,00" data-mask-money
-                                       title="Use vírgula para separar os centavos.">
+        
+        <?php if ($caixa_aberto): ?>
+            <div class="d-flex flex-column flex-sm-row gap-2">
+                <button type="button" class="btn btn-success mb-2 mb-sm-0" data-bs-toggle="modal" data-bs-target="#modalSuprimento">
+                    <i class="fas fa-plus-circle me-1"></i>
+                    <span class="d-none d-sm-inline">Registrar Suprimento</span>
+                    <span class="d-inline d-sm-none">Suprimento</span>
+                </button>
+                <button type="button" class="btn btn-warning text-white mb-2 mb-sm-0" data-bs-toggle="modal" data-bs-target="#modalSangria">
+                    <i class="fas fa-minus-circle me-1"></i>
+                    <span class="d-none d-sm-inline">Registrar Sangria</span>
+                    <span class="d-inline d-sm-none">Sangria</span>
+                </button>
+                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalFecharCaixa">
+                    <i class="fas fa-door-closed me-1"></i>
+                    <span class="d-none d-sm-inline">Fechar Caixa</span>
+                    <span class="d-inline d-sm-none">Fechar</span>
+                </button>
+            </div>
+        <?php else: ?>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAbrirCaixa">
+                <i class="fas fa-door-open me-1"></i>
+                Abrir Caixa
+            </button>
+        <?php endif; ?>
+    </div>
+    
+    <?php if ($caixa_aberto): ?>
+        <!-- Status do Caixa Atual -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Status do Caixa Atual
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3 mb-md-0">
+                                <div class="card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-2">Abertura</h6>
+                                        <p class="mb-1">
+                                            <i class="fas fa-calendar-day me-1 text-primary"></i>
+                                            <?php echo date('d/m/Y H:i', strtotime($caixa_aberto['data_abertura'])); ?>
+                                        </p>
+                                        <h4 class="text-primary mb-0">
+                                            <?php echo formatarDinheiro($caixa_aberto['valor_inicial']); ?>
+                                        </h4>
+                                        <small class="text-muted">Valor inicial</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <?php
+                            // Calcular valores
+                            $total_entradas = 0;
+                            $total_saidas = 0;
+                            
+                            foreach ($movimentacoes as $mov) {
+                                if ($mov['tipo'] == 'venda' || $mov['tipo'] == 'suprimento') {
+                                    $total_entradas += $mov['valor'];
+                                } else if ($mov['tipo'] == 'sangria') {
+                                    $total_saidas += $mov['valor'];
+                                }
+                            }
+                            
+                            $saldo_atual = $caixa_aberto['valor_inicial'] + $total_entradas - $total_saidas;
+                            ?>
+                            
+                            <div class="col-md-4 mb-3 mb-md-0">
+                                <div class="card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-2">Movimentações</h6>
+                                        <div class="d-flex justify-content-around">
+                                            <div>
+                                                <p class="mb-1 text-success">
+                                                    <i class="fas fa-arrow-up me-1"></i>
+                                                    <?php echo formatarDinheiro($total_entradas); ?>
+                                                </p>
+                                                <small class="text-muted">Entradas</small>
+                                            </div>
+                                            <div>
+                                                <p class="mb-1 text-danger">
+                                                    <i class="fas fa-arrow-down me-1"></i>
+                                                    <?php echo formatarDinheiro($total_saidas); ?>
+                                                </p>
+                                                <small class="text-muted">Saídas</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="card h-100 bg-light">
+                                    <div class="card-body text-center">
+                                        <h6 class="text-muted mb-2">Saldo Atual</h6>
+                                        <h3 class="text-primary mb-0">
+                                            <?php echo formatarDinheiro($saldo_atual); ?>
+                                        </h3>
+                                        <small class="text-muted">
+                                            Valor inicial + Entradas - Saídas
+                                        </small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="observacoes" class="form-label">Observações</label>
-                            <textarea class="form-control" id="observacoes" name="observacoes" rows="1"></textarea>
-                        </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabela de Movimentações -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exchange-alt me-2"></i>
+                    Movimentações do Caixa Atual
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover datatable mb-0" id="tabelaMovimentacoes">
+                        <thead>
+                            <tr>
+                                <th data-priority="1">ID</th>
+                                <th data-priority="1">Tipo</th>
+                                <th data-priority="2">Data/Hora</th>
+                                <th data-priority="3">Usuário</th>
+                                <th data-priority="1">Valor</th>
+                                <th data-priority="2">Forma Pagto.</th>
+                                <th data-priority="3">Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($movimentacoes as $mov): ?>
+                                <?php 
+                                // Definir classes e ícones de acordo com o tipo
+                                $tipo_classe = '';
+                                $tipo_icone = '';
+                                $tipo_texto = ucfirst($mov['tipo']);
+                                
+                                switch ($mov['tipo']) {
+                                    case 'venda':
+                                        $tipo_classe = 'success';
+                                        $tipo_icone = 'fa-shopping-cart';
+                                        break;
+                                    case 'sangria':
+                                        $tipo_classe = 'danger';
+                                        $tipo_icone = 'fa-minus-circle';
+                                        break;
+                                    case 'suprimento':
+                                        $tipo_classe = 'primary';
+                                        $tipo_icone = 'fa-plus-circle';
+                                        break;
+                                }
+                                ?>
+                                <tr>
+                                    <td><?php echo $mov['id']; ?></td>
+                                    <td>
+                                        <span class="badge bg-<?php echo $tipo_classe; ?>">
+                                            <i class="fas <?php echo $tipo_icone; ?> me-1"></i>
+                                            <?php echo $tipo_texto; ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo $mov['data_formatada']; ?></td>
+                                    <td><?php echo esc($mov['usuario_nome']); ?></td>
+                                    <td>
+                                        <span class="fw-bold text-<?php echo $tipo_classe; ?>">
+                                            <?php echo formatarDinheiro($mov['valor']); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if ($mov['forma_pagamento']): ?>
+                                            <?php 
+                                            $formas = [
+                                                'dinheiro' => '<i class="fas fa-money-bill-wave text-success me-1"></i> Dinheiro',
+                                                'cartao_credito' => '<i class="fas fa-credit-card text-primary me-1"></i> Crédito',
+                                                'cartao_debito' => '<i class="fas fa-credit-card text-info me-1"></i> Débito',
+                                                'pix' => '<i class="fas fa-qrcode text-warning me-1"></i> PIX',
+                                                'boleto' => '<i class="fas fa-file-invoice-dollar text-secondary me-1"></i> Boleto'
+                                            ];
+                                            echo $formas[$mov['forma_pagamento']] ?? ucfirst(str_replace('_', ' ', $mov['forma_pagamento']));
+                                            ?>
+                                        <?php else: ?>
+                                            <span class="text-muted">N/A</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo esc($mov['observacoes'] ?? ''); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            
+                            <?php if (empty($movimentacoes)): ?>
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                                        <p class="mb-0">Nenhuma movimentação registrada neste caixa.</p>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    <?php else: ?>
+        <!-- Mensagem de caixa fechado -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-door-closed fa-5x text-muted mb-4"></i>
+                        <h4>O caixa está fechado no momento</h4>
+                        <p class="text-muted">Para realizar operações financeiras, é necessário abrir o caixa.</p>
+                        <button type="button" class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#modalAbrirCaixa">
+                            <i class="fas fa-door-open me-1"></i>
+                            Abrir Caixa Agora
+                        </button>
                     </div>
                 </div>
-                <div class="d-grid gap-2">
-                    <button type="submit" name="abrir_caixa" class="btn btn-primary">
-                        <i class="fas fa-unlock-alt me-2"></i> Abrir Caixa
+            </div>
+        </div>
+        <!-- Histórico de Caixas -->
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    Histórico de Caixas
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <?php $historico = $caixa_obj->listarHistorico(10); ?>
+                <div class="table-responsive">
+                    <table class="table table-hover datatable mb-0" id="tabelaHistorico">
+                        <thead>
+                            <tr>
+                                <th data-priority="1">ID</th>
+                                <th data-priority="1">Status</th>
+                                <th data-priority="2">Abertura</th>
+                                <th data-priority="3">Fechamento</th>
+                                <th data-priority="2">Operador</th>
+                                <th data-priority="1">Valor Inicial</th>
+                                <th data-priority="1">Valor Final</th>
+                                <th data-priority="3">Diferença</th>
+                                <th data-priority="3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($historico as $h): ?>
+                                <?php 
+                                $diferenca = 0;
+                                if ($h['status'] == 'fechado' && $h['valor_final'] != null) {
+                                    $diferenca = $h['valor_final'] - ($h['valor_inicial'] + ($h['valor_vendas'] ?: 0) + ($h['valor_suprimentos'] ?: 0) - ($h['valor_sangrias'] ?: 0));
+                                }
+                                
+                                $diferenca_class = 'secondary';
+                                if ($diferenca > 0) {
+                                    $diferenca_class = 'success';
+                                } else if ($diferenca < 0) {
+                                    $diferenca_class = 'danger';
+                                }
+                                ?>
+                                <tr>
+                                    <td><?php echo $h['id']; ?></td>
+                                    <td>
+                                        <?php if ($h['status'] == 'aberto'): ?>
+                                            <span class="badge bg-success">Aberto</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-secondary">Fechado</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo $h['data_abertura_formatada']; ?></td>
+                                    <td>
+                                        <?php if ($h['data_fechamento']): ?>
+                                            <?php echo $h['data_fechamento_formatada']; ?>
+                                        <?php else: ?>
+                                            <span class="text-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo esc($h['usuario_nome']); ?></td>
+                                    <td><?php echo formatarDinheiro($h['valor_inicial']); ?></td>
+                                    <td>
+                                        <?php if ($h['valor_final'] !== null): ?>
+                                            <?php echo formatarDinheiro($h['valor_final']); ?>
+                                        <?php else: ?>
+                                            <span class="text-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if ($h['status'] == 'fechado'): ?>
+                                            <span class="text-<?php echo $diferenca_class; ?>">
+                                                <?php echo formatarDinheiro($diferenca); ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="text-muted">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+    <?php if ($h['status'] == 'fechado'): ?>
+        <a href="relatorios.php?tipo=caixa&id=<?php echo $h['id']; ?>" class="btn btn-sm btn-info text-white" style="display: inline-block !important; background-color: #0dcaf0 !important;" data-bs-toggle="tooltip" title="Ver Relatório">
+            <i class="fas fa-file-alt"></i>
+        </a>
+    <?php else: ?>
+        <button class="btn btn-sm btn-secondary" style="display: inline-block !important;" disabled>
+            <i class="fas fa-file-alt"></i>
+        </button>
+    <?php endif; ?>
+</td>
+                                </tr>
+                            <?php endforeach; ?>
+                            
+                            <?php if (empty($historico)): ?>
+                                <tr>
+                                    <td colspan="9" class="text-center py-4">
+                                        <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                                        <p class="mb-0">Nenhum histórico de caixas encontrado.</p>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+</div>
+
+<!-- Modal Abrir Caixa -->
+<div class="modal fade" id="modalAbrirCaixa" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-door-open me-2"></i>
+                    Abrir Caixa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="caixa.php?acao=abrir_caixa" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="valor_inicial" class="form-label fw-bold">Valor Inicial (R$):</label>
+                        <input type="number" class="form-control form-control-lg" id="valor_inicial" name="valor_inicial" step="0.01" min="0" value="0.00" required>
+                        <div class="form-text">Informe o valor em dinheiro com o qual o caixa será iniciado.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes" class="form-label">Observações (opcional):</label>
+                        <textarea class="form-control" id="observacoes" name="observacoes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-door-open me-1"></i>
+                        Abrir Caixa
                     </button>
                 </div>
             </form>
         </div>
     </div>
-    
-    <!-- Histórico de Caixas -->
-    <div class="card">
-        <div class="card-header bg-secondary text-white">
-            <h5 class="card-title mb-0"><i class="fas fa-history me-2"></i> Histórico de Caixas</h5>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover datatable" id="tabelaHistoricoCaixas">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Data/Hora Abertura</th>
-                            <th>Data/Hora Fechamento</th>
-                            <th>Usuário</th>
-                            <th>Valor Inicial</th>
-                            <th>Valor Final</th>
-                            <th>Diferença</th>
-                            <th>Status</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        try {
-                            $historico = $caixa->listarHistorico();
-                            foreach ($historico as $c):
-                                $diferenca = 0;
-                                if ($c['status'] == 'fechado' && $c['valor_final'] !== null) {
-                                    $valor_esperado = $c['valor_inicial'] + $c['valor_vendas'] + $c['valor_suprimentos'] - $c['valor_sangrias'];
-                                    $diferenca = $c['valor_final'] - $valor_esperado;
-                                }
-                        ?>
-                        <tr>
-                            <td><?php echo $c['id']; ?></td>
-                            <td><?php echo $c['data_abertura_formatada']; ?></td>
-                            <td><?php echo $c['data_fechamento_formatada'] ?? 'Em aberto'; ?></td>
-                            <td><?php echo $c['usuario_nome']; ?></td>
-                            <td><?php echo formatarDinheiro($c['valor_inicial']); ?></td>
-                            <td><?php echo $c['valor_final'] ? formatarDinheiro($c['valor_final']) : '-'; ?></td>
-                            <td class="<?php echo $diferenca < 0 ? 'text-danger' : ($diferenca > 0 ? 'text-success' : ''); ?>">
-                                <?php echo $diferenca != 0 ? formatarDinheiro($diferenca) : '-'; ?>
-                            </td>
-                            <td>
-                                <span class="badge <?php echo $c['status'] == 'aberto' ? 'bg-success' : 'bg-secondary'; ?>">
-                                    <?php echo ucfirst($c['status']); ?>
-                                </span>
-                            </td>
-                            <td>
-                                <a href="detalhe_caixa.php?id=<?php echo $c['id']; ?>" class="btn btn-sm btn-info">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                            </td>
-                        </tr>
-                        <?php
-                            endforeach;
-                        } catch (Exception $e) {
-                            echo '<tr><td colspan="9" class="text-center text-danger">Erro ao carregar histórico: ' . $e->getMessage() . '</td></tr>';
-                        }
-                        ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <?php else: ?>
-    <!-- Caixa Aberto - Painel de Controle -->
-    <div class="row">
-        <div class="col-md-7">
-            <!-- Informações do Caixa Atual -->
-            <div class="card mb-4">
-                <div class="card-header bg-success text-white">
-                    <h5 class="card-title mb-0">
-                        <i class="fas fa-cash-register me-2"></i> Caixa Aberto
-                        <span class="badge bg-light text-dark float-end">
-                            Aberto em: <?php echo date('d/m/Y H:i', strtotime($caixa_aberto['data_abertura'])); ?>
-                        </span>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <?php
-                    // Calcular totais
-                    $total_vendas = 0;
-                    $total_sangrias = 0;
-                    $total_suprimentos = 0;
-                    
-                    foreach ($movimentacoes as $m) {
-                        if ($m['tipo'] == 'venda') $total_vendas += $m['valor'];
-                        if ($m['tipo'] == 'sangria') $total_sangrias += $m['valor'];
-                        if ($m['tipo'] == 'suprimento') $total_suprimentos += $m['valor'];
-                    }
-                    
-                    $saldo_atual = $caixa_aberto['valor_inicial'] + $total_vendas + $total_suprimentos - $total_sangrias;
-                    ?>
-                    
-                    <div class="row text-center">
-                        <div class="col-md-3 mb-3">
-                            <div class="card bg-light">
-                                <div class="card-body py-3">
-                                    <h6 class="card-title">Valor Inicial</h6>
-                                    <h4><?php echo formatarDinheiro($caixa_aberto['valor_inicial']); ?></h4>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <div class="card bg-success text-white">
-                                <div class="card-body py-3">
-                                    <h6 class="card-title">Vendas</h6>
-                                    <h4><?php echo formatarDinheiro($total_vendas); ?></h4>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <div class="card bg-danger text-white">
-                                <div class="card-body py-3">
-                                    <h6 class="card-title">Sangrias</h6>
-                                    <h4><?php echo formatarDinheiro($total_sangrias); ?></h4>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <div class="card bg-info text-white">
-                                <div class="card-body py-3">
-                                    <h6 class="card-title">Suprimentos</h6>
-                                    <h4><?php echo formatarDinheiro($total_suprimentos); ?></h4>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row mt-3">
-                        <div class="col-md-6 offset-md-3">
-                            <div class="card bg-primary text-white">
-                                <div class="card-body py-3 text-center">
-                                    <h6 class="card-title">Saldo em Caixa (Esperado)</h6>
-                                    <h3><?php echo formatarDinheiro($saldo_atual); ?></h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="d-grid gap-2 mt-4">
-                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalFecharCaixa">
-                            <i class="fas fa-lock me-2"></i> Fechar Caixa
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Movimentações do Caixa -->
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0"><i class="fas fa-exchange-alt me-2"></i> Movimentações do Caixa</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Hora</th>
-                                    <th>Tipo</th>
-                                    <th>Valor</th>
-                                    <th>Forma Pagto</th>
-                                    <th>Usuário</th>
-                                    <th>Observações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($movimentacoes)): ?>
-                                <tr>
-                                    <td colspan="6" class="text-center">Nenhuma movimentação registrada</td>
-                                </tr>
-                                <?php else: ?>
-                                <?php foreach ($movimentacoes as $m): ?>
-                                <tr>
-                                    <td><?php echo date('H:i', strtotime($m['data_hora'])); ?></td>
-                                    <td>
-                                        <?php if ($m['tipo'] == 'venda'): ?>
-                                        <span class="badge bg-success">Venda</span>
-                                        <?php elseif ($m['tipo'] == 'sangria'): ?>
-                                        <span class="badge bg-danger">Sangria</span>
-                                        <?php elseif ($m['tipo'] == 'suprimento'): ?>
-                                        <span class="badge bg-info">Suprimento</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?php echo formatarDinheiro($m['valor']); ?></td>
-                                    <td>
-                                        <?php 
-                                        if ($m['forma_pagamento']) {
-                                            $formas = [
-                                                'dinheiro' => '<i class="fas fa-money-bill-wave text-success"></i> Dinheiro',
-                                                'cartao_credito' => '<i class="far fa-credit-card text-primary"></i> Crédito',
-                                                'cartao_debito' => '<i class="fas fa-credit-card text-info"></i> Débito',
-                                                'pix' => '<i class="fas fa-qrcode text-primary"></i> PIX',
-                                                'boleto' => '<i class="fas fa-file-invoice-dollar text-secondary"></i> Boleto'
-                                            ];
-                                            echo $formas[$m['forma_pagamento']] ?? $m['forma_pagamento'];
-                                        } else {
-                                            echo '-';
-                                        }
-                                        ?>
-                                    </td>
-                                    <td><?php echo $m['usuario_nome']; ?></td>
-                                    <td><?php echo $m['observacoes'] ?? '-'; ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-5">
-            <!-- Sangria de Caixa -->
-            <div class="card mb-4">
-                <div class="card-header bg-danger text-white">
-                    <h5 class="card-title mb-0"><i class="fas fa-money-bill-wave me-2"></i> Registrar Sangria</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted">Use este formulário para registrar retiradas de dinheiro do caixa.</p>
-                    <form method="post" action="">
-                        <div class="mb-3">
-                            <label for="valor_sangria" class="form-label">Valor da Sangria</label>
-                            <div class="input-group">
-                                <span class="input-group-text">R$</span>
-                                <input type="text" class="form-control" id="valor_sangria" name="valor_sangria" required
-                                      data-mask-money>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="observacoes_sangria" class="form-label">Motivo da Sangria</label>
-                            <textarea class="form-control" id="observacoes_sangria" name="observacoes_sangria" rows="2" required></textarea>
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" name="registrar_sangria" class="btn btn-danger">
-                                <i class="fas fa-check me-2"></i> Registrar Sangria
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            
-            <!-- Suprimento de Caixa -->
-            <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h5 class="card-title mb-0"><i class="fas fa-hand-holding-usd me-2"></i> Registrar Suprimento</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted">Use este formulário para registrar entradas adicionais de dinheiro no caixa.</p>
-                    <form method="post" action="">
-                        <div class="mb-3">
-                            <label for="valor_suprimento" class="form-label">Valor do Suprimento</label>
-                            <div class="input-group">
-                                <span class="input-group-text">R$</span>
-                                <input type="text" class="form-control" id="valor_suprimento" name="valor_suprimento" required
-                                      data-mask-money>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="observacoes_suprimento" class="form-label">Motivo do Suprimento</label>
-                            <textarea class="form-control" id="observacoes_suprimento" name="observacoes_suprimento" rows="2" required></textarea>
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" name="registrar_suprimento" class="btn btn-info">
-                                <i class="fas fa-check me-2"></i> Registrar Suprimento
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal Fechar Caixa -->
-    <div class="modal fade" id="modalFecharCaixa" tabindex="-1" aria-labelledby="modalFecharCaixaLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title" id="modalFecharCaixaLabel"><i class="fas fa-lock me-2"></i> Fechar Caixa</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle me-2"></i> Atenção: O fechamento de caixa encerra todas as operações deste caixa e não pode ser desfeito!
-                    </div>
-                    
-                    <form method="post" action="" id="formFecharCaixa">
-                        <div class="row mb-4">
-                            <div class="col-md-4">
-                                <div class="card bg-light">
-                                    <div class="card-body text-center py-2">
-                                        <h6 class="card-title">Valor Inicial</h6>
-                                        <h5><?php echo formatarDinheiro($caixa_aberto['valor_inicial']); ?></h5>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card bg-light">
-                                    <div class="card-body text-center py-2">
-                                        <h6 class="card-title">Movimentações</h6>
-                                        <h5><?php echo formatarDinheiro($total_vendas + $total_suprimentos - $total_sangrias); ?></h5>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card bg-primary text-white">
-                                    <div class="card-body text-center py-2">
-                                        <h6 class="card-title">Valor Esperado</h6>
-                                        <h5><?php echo formatarDinheiro($saldo_atual); ?></h5>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="valor_final" class="form-label">Valor em Caixa (Contagem Real)</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">R$</span>
-                                        <input type="text" class="form-control" id="valor_final" name="valor_final" required
-                                              value="<?php echo number_format($saldo_atual, 2, ',', '.'); ?>" data-mask-money>
-                                    </div>
-                                    <div class="form-text">Informe o valor real contado no fechamento do caixa.</div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="observacoes_fechamento" class="form-label">Observações do Fechamento</label>
-                                    <textarea class="form-control" id="observacoes_fechamento" name="observacoes_fechamento" rows="3"></textarea>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="d-grid gap-2">
-                            <button type="submit" name="fechar_caixa" class="btn btn-danger">
-                                <i class="fas fa-lock me-2"></i> Confirmar Fechamento de Caixa
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php endif; ?>
 </div>
 
-<script>
-    // Inicializar máscaras de moeda
-    document.addEventListener('DOMContentLoaded', function() {
-        const moneyInputs = document.querySelectorAll('[data-mask-money]');
-        
-        moneyInputs.forEach(function(input) {
-            // Seleciona o conteúdo ao focar
-            input.addEventListener('focus', function() {
-                setTimeout(() => this.select(), 10);
-            });
-            
-            // Trata a entrada do usuário sem formatação automática durante a digitação
-            input.addEventListener('input', function(e) {
-                let value = e.target.value;
-                
-                // Remove qualquer caractere que não seja número ou vírgula
-                value = value.replace(/[^\d,]/g, '');
-                
-                // Limita a uma única vírgula
-                const parts = value.split(',');
-                if (parts.length > 2) {
-                    value = parts[0] + ',' + parts.slice(1).join('');
-                }
-                
-                // Atualiza o valor sem formatação automática
-                e.target.value = value;
-            });
-            
-            // Aplica a formatação completa quando o campo perde o foco
-            input.addEventListener('blur', function(e) {
-                let value = e.target.value;
-                
-                // Garante que tenha um valor
-                if (!value) {
-                    value = '0,00';
-                } 
-                
-                // Garante que tenha a vírgula e 2 casas decimais
-                if (!value.includes(',')) {
-                    value = value + ',00';
-                } else {
-                    const parts = value.split(',');
-                    const decimal = parts[1] || '';
-                    value = parts[0] + ',' + decimal.padEnd(2, '0').slice(0, 2);
-                }
-                
-                // Adiciona os separadores de milhar
-                const parts = value.split(',');
-                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-                value = parts.join(',');
-                
-                e.target.value = value;
-            });
-            
-            // Aplica a formatação inicial, mas apenas se o valor for o padrão
-            if (input.value === '0,00') {
-                const event = new Event('blur', { bubbles: true });
-                input.dispatchEvent(event);
-            }
-        });
-    });
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Permite que o campo de valor inicial seja limpo ao receber foco
-    const valorInicial = document.getElementById('valor_inicial');
-    if (valorInicial) {
-        valorInicial.addEventListener('focus', function() {
-            if (this.value === '0,00') {
-                this.value = '';
-            }
-        });
-        
-        // Ao perder o foco, se estiver vazio, restaura o valor padrão
-        valorInicial.addEventListener('blur', function() {
-            if (this.value === '') {
-                this.value = '0,00';
-                // Dispara o evento input para formatar corretamente
-                const event = new Event('input', { bubbles: true });
-                this.dispatchEvent(event);
-            }
-        });
-    }
-});
-document.addEventListener('DOMContentLoaded', function() {
-    // Função para reinicializar a tabela de histórico após DataTables ser carregado
-    function configurarTabelaHistorico() {
-        // Aguarda até que DataTables esteja completamente carregado
-        if (typeof $.fn.dataTable !== 'undefined') {
-            // Espera um breve momento para garantir que o DataTables padrão já inicializou
-            setTimeout(function() {
-                // Se já for uma instância DataTable, destrói para reinicializar
-                if ($.fn.dataTable.isDataTable('#tabelaHistoricoCaixas')) {
-                    $('#tabelaHistoricoCaixas').DataTable().destroy();
-                }
-                
-                // Reinicializa com ordenação específica
-                $('#tabelaHistoricoCaixas').DataTable({
-                    "order": [[ 0, "desc" ]], // Ordena pelo ID (primeira coluna) em ordem decrescente
-                    // Mantém as outras configurações padrão do DataTables
-                    "language": {
-                        "url": "//cdn.datatables.net/plug-ins/1.10.24/i18n/Portuguese-Brasil.json"
+<!-- Modal Fechar Caixa -->
+<?php if ($caixa_aberto): ?>
+<div class="modal fade" id="modalFecharCaixa" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-door-closed me-2"></i>
+                    Fechar Caixa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="caixa.php?acao=fechar_caixa" method="post">
+                <div class="modal-body">
+                    <?php
+                    // Calcular valores para exibição
+                    $valor_inicial = $caixa_aberto['valor_inicial'];
+                    $total_vendas = 0;
+                    $total_suprimentos = 0;
+                    $total_sangrias = 0;
+                    
+                    foreach ($movimentacoes as $mov) {
+                        if ($mov['tipo'] == 'venda') {
+                            $total_vendas += $mov['valor'];
+                        } else if ($mov['tipo'] == 'suprimento') {
+                            $total_suprimentos += $mov['valor'];
+                        } else if ($mov['tipo'] == 'sangria') {
+                            $total_sangrias += $mov['valor'];
+                        }
                     }
-                });
-            }, 100); // Pequeno atraso para garantir que a inicialização padrão já ocorreu
-        } else {
-            // Se DataTables ainda não estiver carregado, tenta novamente em 100ms
-            setTimeout(configurarTabelaHistorico, 100);
-        }
-    }
-    
-    // Inicia o processo de configuração
-    configurarTabelaHistorico();
+                    
+                    $saldo_calculado = $valor_inicial + $total_vendas + $total_suprimentos - $total_sangrias;
+                    ?>
+                    
+                    <div class="alert alert-info mb-4">
+                        <h6 class="mb-2">Resumo do Caixa</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1">Valor Inicial: <strong><?php echo formatarDinheiro($valor_inicial); ?></strong></p>
+                                <p class="mb-1">+ Vendas: <strong><?php echo formatarDinheiro($total_vendas); ?></strong></p>
+                                <p class="mb-1">+ Suprimentos: <strong><?php echo formatarDinheiro($total_suprimentos); ?></strong></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1">- Sangrias: <strong><?php echo formatarDinheiro($total_sangrias); ?></strong></p>
+                                <p class="mb-1 fw-bold">= Saldo Esperado: <span class="text-primary"><?php echo formatarDinheiro($saldo_calculado); ?></span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="valor_final" class="form-label fw-bold">Valor Final em Caixa (R$):</label>
+                        <input type="number" class="form-control form-control-lg" id="valor_final" name="valor_final" step="0.01" min="0" value="<?php echo number_format($saldo_calculado, 2, '.', ''); ?>" required>
+                        <div class="form-text">Informe o valor real contado no fechamento do caixa.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes" class="form-label">Observações (opcional):</label>
+                        <textarea class="form-control" id="observacoes" name="observacoes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-door-closed me-1"></i>
+                        Fechar Caixa
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Sangria -->
+<div class="modal fade" id="modalSangria" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-minus-circle me-2"></i>
+                    Registrar Sangria
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="caixa.php?acao=sangria" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="valor_sangria" class="form-label fw-bold">Valor da Sangria (R$):</label>
+                        <input type="number" class="form-control form-control-lg" id="valor_sangria" name="valor_sangria" step="0.01" min="0.01" required>
+                        <div class="form-text">Informe o valor que será retirado do caixa.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes_sangria" class="form-label">Motivo da Sangria:</label>
+                        <textarea class="form-control" id="observacoes_sangria" name="observacoes_sangria" rows="2" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-warning text-white">
+                        <i class="fas fa-minus-circle me-1"></i>
+                        Registrar Sangria
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Suprimento -->
+<div class="modal fade" id="modalSuprimento" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus-circle me-2"></i>
+                    Registrar Suprimento
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="caixa.php?acao=suprimento" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="valor_suprimento" class="form-label fw-bold">Valor do Suprimento (R$):</label>
+                        <input type="number" class="form-control form-control-lg" id="valor_suprimento" name="valor_suprimento" step="0.01" min="0.01" required>
+                        <div class="form-text">Informe o valor que será adicionado ao caixa.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes_suprimento" class="form-label">Motivo do Suprimento:</label>
+                        <textarea class="form-control" id="observacoes_suprimento" name="observacoes_suprimento" rows="2" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-plus-circle me-1"></i>
+                        Registrar Suprimento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<script>
+    $(document).ready(function() {
+        // Inicializa DataTables com responsividade para tabela de movimentações
+        $('#tabelaMovimentacoes').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json"
+            },
+            "pageLength": 25,
+            "responsive": {
+                details: {
+                    display: $.fn.dataTable.Responsive.display.childRowImmediate,
+                    type: 'column',
+                    renderer: function(api, rowIdx, columns) {
+                        var data = $.map(columns, function(col, i) {
+                            return col.hidden ?
+                                '<tr data-dt-row="' + col.rowIndex + '" data-dt-column="' + col.columnIndex + '">' +
+                                    '<td class="fw-bold">' + col.title + ':</td> ' +
+                                    '<td>' + col.data + '</td>' +
+                                '</tr>' :
+                                '';
+                        }).join('');
+                        
+                        return data ? $('<table class="table table-sm mb-0"></table>').append(data) : false;
+                    }
+                }
+            },
+            "order": [[0, 'desc']], // Ordenar por ID decrescente (mais recente primeiro)
+            "autoWidth": false,
+            "columnDefs": [
+                { responsivePriority: 1, targets: [0, 1, 4] }, // Prioridade alta 
+                { responsivePriority: 2, targets: [2, 5] },    // Prioridade média
+                { responsivePriority: 3, targets: [3, 6] }     // Prioridade baixa
+            ]
+        });
+        
+        // Inicializa DataTables com responsividade para tabela de histórico
+        $('#tabelaHistorico').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json"
+            },
+            "pageLength": 25,
+            "responsive": {
+                details: {
+                    display: $.fn.dataTable.Responsive.display.childRowImmediate,
+                    type: 'column',
+                    renderer: function(api, rowIdx, columns) {
+                        var data = $.map(columns, function(col, i) {
+                            return col.hidden ?
+                                '<tr data-dt-row="' + col.rowIndex + '" data-dt-column="' + col.columnIndex + '">' +
+                                    '<td class="fw-bold">' + col.title + ':</td> ' +
+                                    '<td>' + col.data + '</td>' +
+                                '</tr>' :
+                                '';
+                        }).join('');
+                        
+                        return data ? $('<table class="table table-sm mb-0"></table>').append(data) : false;
+                    }
+                }
+            },
+            "order": [[0, 'desc']], // Ordenar por ID decrescente (mais recente primeiro)
+            "autoWidth": false,
+            "columnDefs": [
+                { responsivePriority: 1, targets: [0, 1, 5, 6] }, // Prioridade alta 
+                { responsivePriority: 2, targets: [2, 4] },       // Prioridade média
+                { responsivePriority: 3, targets: [3, 7, 8] }     // Prioridade baixa
+            ]
+        });
+        
+        // Formatação de campos de valores monetários
+        $('input[type="number"]').on('focus', function() {
+    // Armazena o valor original ao focar
+    $(this).data('original', $(this).val());
 });
+
+$('input[type="number"]').on('blur', function() {
+    // Formata ao sair do campo
+    if ($(this).val() === '') {
+        $(this).val($(this).data('original') || 0);
+    }
+});
+        
+        // Inicializar tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+        
+        // Alerta de saldo insuficiente na sangria
+        $('#valor_sangria').on('input', function() {
+            var valorSangria = parseFloat($(this).val()) || 0;
+            var saldoAtual = <?php echo isset($saldo_atual) ? $saldo_atual : 0; ?>;
+            
+            if (valorSangria > saldoAtual) {
+                if (!$('#alerta-saldo').length) {
+                    $('<div id="alerta-saldo" class="alert alert-danger mt-2">O valor da sangria não pode ser maior que o saldo atual (<?php echo isset($saldo_atual) ? formatarDinheiro($saldo_atual) : "R$ 0,00"; ?>).</div>').insertAfter($(this).parent());
+                }
+            } else {
+                $('#alerta-saldo').remove();
+            }
+        });
+        
+        // Cálculo automático da diferença no fechamento
+        $('#valor_final').on('input', function() {
+            var valorFinal = parseFloat($(this).val()) || 0;
+            var saldoCalculado = <?php echo isset($saldo_calculado) ? $saldo_calculado : 0; ?>;
+            var diferenca = valorFinal - saldoCalculado;
+            
+            var mensagem = '';
+            var classe = 'alert-info';
+            
+            if (diferenca > 0) {
+                mensagem = 'O caixa terá uma sobra de ' + formatarDinheiro(diferenca);
+                classe = 'alert-warning';
+            } else if (diferenca < 0) {
+                mensagem = 'O caixa terá uma falta de ' + formatarDinheiro(Math.abs(diferenca));
+                classe = 'alert-danger';
+            } else {
+                mensagem = 'O caixa está exato, sem diferenças.';
+                classe = 'alert-success';
+            }
+            
+            if (!$('#alerta-diferenca').length) {
+                $('<div id="alerta-diferenca" class="alert mt-2">' + mensagem + '</div>').insertAfter($(this).parent());
+                $('#alerta-diferenca').addClass(classe);
+            } else {
+                $('#alerta-diferenca').text(mensagem).removeClass('alert-success alert-warning alert-danger alert-info').addClass(classe);
+            }
+        });
+        
+        // Função para formatar valores monetários
+        function formatarDinheiro(valor) {
+            return 'R$ ' + valor.toFixed(2).replace('.', ',');
+        }
+    });
 </script>
 
 <?php include 'footer.php'; ?>

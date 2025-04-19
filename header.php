@@ -11,6 +11,8 @@ if (!isset($_SESSION['usuario_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $titulo_pagina ?? 'Sistema PDV'; ?></title>
+    <!-- jQuery Mask Plugin -->
+   <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script> -->
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Bootstrap JS -->
@@ -194,6 +196,40 @@ if (!isset($_SESSION['usuario_id'])) {
             background-color: var(--warning-color) !important;
         }
         
+
+            /* Garantir que botões de ação em tabelas responsivas mantenham aparência correta */
+    .datatable .btn {
+        display: inline-block !important;
+    }
+    
+    /* Forçar cores de background nos botões de ação */
+    .datatable .btn-info {
+        background-color: #0dcaf0 !important;
+        border-color: #0dcaf0 !important;
+    }
+    
+    .datatable .btn-primary {
+        background-color: #0d6efd !important;
+        border-color: #0d6efd !important;
+    }
+    
+    .datatable .btn-danger {
+        background-color: #dc3545 !important;
+        border-color: #dc3545 !important;
+    }
+    
+    /* Garantir que botões em linhas expandidas mantenham estilo */
+    .dtr-details .btn {
+        display: inline-block !important;
+        margin: 0.1rem;
+    }
+    
+    /* Manter cor do texto nos botões */
+    .datatable .btn-info.text-white {
+        color: #fff !important;
+    }
+
+
         /* Buttons styling */
         .btn {
             border-radius: 6px;
