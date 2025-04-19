@@ -46,6 +46,10 @@ function redirecionar($url) {
 
 // Função para escapar dados e prevenir XSS
 function esc($string) {
+    // Verifica se a string é null ou vazia antes de aplicar htmlspecialchars
+    if ($string === null || $string === '') {
+        return '';
+    }
     return htmlspecialchars($string, ENT_QUOTES, 'UTF-8');
 }
 
@@ -2673,10 +2677,12 @@ class Comanda {
             $sql = "
                 SELECT c.*, 
                        cl.nome AS cliente_nome,
+                       u1.nome AS usuario_abertura_nome,
                        DATE_FORMAT(c.data_abertura, '%d/%m/%Y %H:%i') AS data_abertura_formatada,
                        DATE_FORMAT(c.data_fechamento, '%d/%m/%Y %H:%i') AS data_fechamento_formatada
                 FROM comandas c
                 LEFT JOIN clientes cl ON c.cliente_id = cl.id
+                LEFT JOIN usuarios u1 ON c.usuario_abertura_id = u1.id
                 WHERE 1=1
             ";
             
