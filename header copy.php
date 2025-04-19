@@ -554,7 +554,6 @@ if (!isset($_SESSION['usuario_id'])) {
                             <span>Vendas</span>
                         </a>
                     </li>
-                    <?php if (in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'produtos.php' ? 'active' : ''; ?>" href="produtos.php">
                             <i class="fas fa-box"></i>
@@ -573,18 +572,12 @@ if (!isset($_SESSION['usuario_id'])) {
                             <span>Estoque</span>
                         </a>
                     </li>
-                    <?php endif; ?>
-
-
                     <li class="nav-item">
                         <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'clientes.php' ? 'active' : ''; ?>" href="clientes.php">
                             <i class="fas fa-users"></i>
                             <span>Clientes</span>
                         </a>
                     </li>
-
-                    
-                    <?php if (in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])): ?>
                     <li class="nav-item">
                         <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'fornecedores.php' ? 'active' : ''; ?>" href="fornecedores.php">
                             <i class="fas fa-truck"></i>
@@ -597,15 +590,12 @@ if (!isset($_SESSION['usuario_id'])) {
                             <span>Compras</span>
                         </a>
                     </li>
-                    
-                        <!-- Links para admin e gerente -->
-                        <li class="nav-item">
+                    <li class="nav-item">
                         <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'relatorios.php' ? 'active' : ''; ?>" href="relatorios.php">
                             <i class="fas fa-chart-bar"></i>
                             <span>Relatórios</span>
                         </a>
                     </li>
-                    <?php endif; ?>
                     <?php if ($_SESSION['usuario_nivel'] == 'admin'): ?>
                     <li class="nav-item">
                         <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'usuarios.php' ? 'active' : ''; ?>" href="usuarios.php">

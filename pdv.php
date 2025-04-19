@@ -402,8 +402,8 @@ include 'header.php';
         }
     });
     
-// Função para buscar produto por código (com aviso melhorado)
-function buscarProdutoPorCodigo() {
+ // Função para buscar produto por código (com aviso melhorado)
+ function buscarProdutoPorCodigo() {
     const codigo = $('#codigoProduto').val().trim();
     if (!codigo) return;
     
@@ -453,10 +453,10 @@ function buscarProdutoPorCodigo() {
             mostrarToast('Erro', 'Erro ao buscar o produto. Tente novamente.', 'danger');
         }
     });
-}
+ }
 
-// Função para buscar produtos por nome (com aviso melhorado)
-function buscarProdutosPorNome() {
+ // Função para buscar produtos por nome (com aviso melhorado)
+ function buscarProdutosPorNome() {
     const nome = $('#nomeProduto').val().trim();
     if (!nome) return;
     
@@ -515,10 +515,10 @@ function buscarProdutosPorNome() {
             mostrarToast('Erro', 'Erro ao buscar produtos. Tente novamente.', 'danger');
         }
     });
-}
+ }
 
-// Função auxiliar para exibir toast se ainda não existir
-function mostrarToast(titulo, mensagem, tipo) {
+ // Função auxiliar para exibir toast se ainda não existir
+ function mostrarToast(titulo, mensagem, tipo) {
     // Verificar se a função já existe no contexto global
     if (typeof window.mostrarToast === 'function') {
         window.mostrarToast(titulo, mensagem, tipo);
@@ -551,7 +551,7 @@ function mostrarToast(titulo, mensagem, tipo) {
     setTimeout(function() {
         $(`#${toastId}`).remove();
     }, 3000);
-}
+    }
     
     // Exibir modal com resultados da busca
     function exibirResultadosBusca(produtos) {
@@ -729,71 +729,84 @@ function mostrarToast(titulo, mensagem, tipo) {
         }
     }
     
-    // Finalizar venda
-    function finalizarVenda() {
-        if (itensVenda.length === 0) {
-            mostrarToast('Atenção', 'Adicione pelo menos um produto à venda!', 'warning');
-            return;
-        }
-        
-        // Mostrar indicador de carregamento
-        $('#btnFinalizar').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processando...');
-        
-        // Preparar dados da venda
-        const venda = {
-            cliente_id: $('#clienteId').val() || null,
-            valor_total: parseFloat($('#total').text().replace('R$ ', '').replace(',', '.')),
-            desconto: parseFloat($('#desconto').val()) || 0,
-            forma_pagamento: $('input[name="formaPagamento"]:checked').val(),
-            status: 'finalizada',
-            observacoes: $('#observacoes').val(),
-            itens: itensVenda.map(item => ({
-                produto_id: item.id,
-                quantidade: item.quantidade,
-                preco_unitario: item.preco_unitario
-            }))
-        };
-        
-        // Enviar venda para o servidor
-        $.ajax({
-            url: 'ajax/finalizar_venda.php',
-            type: 'POST',
-            data: { venda: JSON.stringify(venda) },
-            dataType: 'json',
-            success: function(response) {
-                if (response.error) {
-                    mostrarToast('Erro', response.error, 'danger');
-                    $('#btnFinalizar').prop('disabled', false).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
-                    return;
-                }
-                
-                mostrarToast('Sucesso', 'Venda finalizada com sucesso!', 'success');
-                
-                // Redirecionar para a página de impressão ou nova venda
-                if (response.imprimir) {
-                    window.open(`imprimir_venda.php?id=${response.venda_id}`, '_blank');
-                }
-                
-                // Limpar venda atual
-                itensVenda = [];
-                $('#clienteId').val('');
-                $('#desconto').val(0);
-                $('#observacoes').val('');
-                atualizarTabelaItens();
-                calcularTotal();
-                
-                // Restaurar botão
-                $('#btnFinalizar').prop('disabled', true).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
-                
-                // Focar no campo de código
-                $('#codigoProduto').focus();
-            },
-            error: function() {
-                mostrarToast('Erro', 'Erro ao finalizar a venda. Tente novamente.', 'danger');
-                $('#btnFinalizar').prop('disabled', false).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
-            }
-        });
+// Função para finalizar venda (corrigida)
+function finalizarVenda() {
+    if (itensVenda.length === 0) {
+        mostrarToast('Atenção', 'Adicione pelo menos um produto à venda!', 'warning');
+        return;
     }
+    
+    // Mostrar indicador de carregamento
+    $('#btnFinalizar').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processando...');
+    
+    // Preparar dados da venda
+    const venda = {
+        cliente_id: $('#clienteId').val() || null,
+        valor_total: parseFloat($('#total').text().replace('R$ ', '').replace(',', '.')),
+        desconto: parseFloat($('#desconto').val()) || 0,
+        forma_pagamento: $('input[name="formaPagamento"]:checked').val(),
+        status: 'finalizada',
+        observacoes: $('#observacoes').val(),
+        itens: itensVenda.map(item => ({
+            produto_id: item.id,
+            quantidade: item.quantidade,
+            preco_unitario: item.preco_unitario
+        }))
+    };
+    
+    // Adicionar log no console para debug
+    console.log('Enviando dados da venda:', venda);
+    
+    // Enviar venda para o servidor
+    $.ajax({
+        url: 'ajax_pdv.php',
+        type: 'POST',
+        data: { 
+            acao: 'finalizar_venda',
+            venda: JSON.stringify(venda)
+        },
+        dataType: 'json',
+        success: function(response) {
+            console.log('Resposta do servidor:', response);
+            
+            if (response.status === 'error') {
+                mostrarToast('Erro', response.message, 'danger');
+                $('#btnFinalizar').prop('disabled', false).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
+                return;
+            }
+            
+            mostrarToast('Sucesso', 'Venda finalizada com sucesso!', 'success');
+            
+            // Redirecionar para a página de impressão ou nova venda
+            if (response.imprimir) {
+                window.open(`imprimir_venda.php?id=${response.venda_id}`, '_blank');
+            }
+            
+            // Limpar venda atual
+            itensVenda = [];
+            $('#clienteId').val('');
+            $('#desconto').val(0);
+            $('#observacoes').val('');
+            atualizarTabelaItens();
+            calcularTotal();
+            
+            // Restaurar botão
+            $('#btnFinalizar').prop('disabled', true).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
+            
+            // Focar no campo de código
+            $('#codigoProduto').focus();
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro AJAX ao finalizar venda:', xhr.responseText);
+            console.error('Status:', status);
+            console.error('Erro:', error);
+            
+            mostrarToast('Erro', 'Erro ao finalizar a venda. Verifique o console para mais detalhes.', 'danger');
+            $('#btnFinalizar').prop('disabled', false).html('<i class="fas fa-check-circle me-2"></i>Finalizar Venda');
+        }
+    });
+}
+
     
     // Função para mostrar toast
     function mostrarToast(titulo, mensagem, tipo) {

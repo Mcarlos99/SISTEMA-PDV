@@ -129,7 +129,7 @@ include 'header.php';
                                         <th width="40%">Produto</th>
                                         <th width="15%">Quantidade</th>
                                         <th width="20%">Preço Unit.</th>
-                                        <th width="20%">Subtotal</th>
+                                        <th width="20%">SubTotal</th>
                                         <th width="5%">Ações</th>
                                     </tr>
                                 </thead>
@@ -392,6 +392,7 @@ include 'header.php';
             let total = 0;
             
             produtos.forEach(produto => {
+                //total += produto.preco * produto.quantidade;
                 total += produto.preco * produto.quantidade;
             });
             

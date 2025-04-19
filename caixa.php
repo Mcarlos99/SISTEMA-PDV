@@ -1,4 +1,4 @@
- <?php
+<?php
 require_once 'config.php';
 
 // Verificar se o usuário está logado
@@ -94,6 +94,71 @@ if ($acao == 'suprimento' && isset($_POST['valor_suprimento'])) {
 // Listar movimentações se tiver caixa aberto
 $movimentacoes = [];
 if ($caixa_aberto) {
+    // Buscar todas as vendas do dia que não foram incluídas nas movimentações do caixa
+    $stmt = $pdo->prepare("
+    SELECT 
+        v.id, 
+        v.usuario_id, 
+        v.data_venda, 
+        v.valor_total, 
+        v.forma_pagamento,
+        v.observacoes,
+        u.nome AS usuario_nome
+    FROM vendas v
+    LEFT JOIN usuarios u ON v.usuario_id = u.id
+    WHERE DATE(v.data_venda) = CURDATE() 
+      AND v.status = 'finalizada'  -- Apenas vendas finalizadas, não canceladas
+      AND NOT EXISTS (
+          SELECT 1 FROM movimentacoes_caixa m 
+          WHERE m.documento_id = v.id AND m.tipo = 'venda'
+      )
+");
+    $stmt->execute();
+    $vendas_nao_registradas = $stmt->fetchAll();
+
+    
+    
+    // Remover movimentações de vendas que foram canceladas
+    $stmt = $pdo->prepare("
+        SELECT m.id
+        FROM movimentacoes_caixa m
+        LEFT JOIN vendas v ON m.documento_id = v.id AND m.tipo = 'venda'
+        WHERE m.caixa_id = :caixa_id
+          AND m.tipo = 'venda'
+          AND (v.status = 'cancelada' OR v.id IS NULL)
+    ");
+    $stmt->bindParam(':caixa_id', $caixa_aberto['id'], PDO::PARAM_INT);
+    $stmt->execute();
+    $movs_para_remover = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    // Remover as movimentações de vendas canceladas
+    foreach ($movs_para_remover as $mov_id) {
+        $stmt = $pdo->prepare("DELETE FROM movimentacoes_caixa WHERE id = :id");
+        $stmt->bindParam(':id', $mov_id, PDO::PARAM_INT);
+        $stmt->execute();
+    }
+
+    
+    // Registrar as vendas encontradas nas movimentações do caixa
+    foreach ($vendas_nao_registradas as $venda) {
+        $dados = [
+            'tipo' => 'venda',
+            'valor' => $venda['valor_total'],
+            'forma_pagamento' => $venda['forma_pagamento'],
+            'documento_id' => $venda['id'],
+            'observacoes' => "Venda #{$venda['id']} registrada automaticamente no caixa"
+        ];
+        
+        // Usar a função da classe Caixa para registrar a movimentação
+        try {
+            $caixa_obj->adicionarMovimentacao($dados);
+        } catch (Exception $e) {
+            // Apenas registrar o erro, sem interromper a execução
+            error_log("Erro ao adicionar venda #{$venda['id']} às movimentações do caixa: " . $e->getMessage());
+        }
+    }
+    
+    // Agora buscar todas as movimentações atualizadas
     $movimentacoes = $caixa_obj->listarMovimentacoes($caixa_aberto['id']);
 }
 
@@ -325,7 +390,7 @@ include 'header.php';
                 </div>
             </div>
         </div>
-    <?php else: ?>
+        <?php else: ?>
         <!-- Mensagem de caixa fechado -->
         <div class="row">
             <div class="col-md-12">
@@ -710,16 +775,16 @@ include 'header.php';
         
         // Formatação de campos de valores monetários
         $('input[type="number"]').on('focus', function() {
-    // Armazena o valor original ao focar
-    $(this).data('original', $(this).val());
-});
+            // Armazena o valor original ao focar
+            $(this).data('original', $(this).val());
+        });
 
-$('input[type="number"]').on('blur', function() {
-    // Formata ao sair do campo
-    if ($(this).val() === '') {
-        $(this).val($(this).data('original') || 0);
-    }
-});
+        $('input[type="number"]').on('blur', function() {
+            // Formata ao sair do campo
+            if ($(this).val() === '') {
+                $(this).val($(this).data('original') || 0);
+            }
+        });
         
         // Inicializar tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))

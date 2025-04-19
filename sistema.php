@@ -768,73 +768,78 @@ class Caixa {
         }
     }
 
-    // Fechar o caixa
-    public function fechar($valor_final, $observacoes = '') {
-        try {
-            // Verificar se existe um caixa aberto
-            $caixa = $this->verificarCaixaAberto();
-            if (!$caixa) {
-                throw new Exception("Não há um caixa aberto para fechar.");
-            }
-            
-            // Calcular totais
-            $valor_vendas = $this->calcularTotalVendas($caixa['id']);
-            $valor_sangrias = $this->calcularTotalSangrias($caixa['id']);
-            $valor_suprimentos = $this->calcularTotalSuprimentos($caixa['id']);
-            
-            // Atualizar o caixa
-            $stmt = $this->pdo->prepare("
-                UPDATE caixas SET
-                data_fechamento = NOW(),
-                valor_final = :valor_final,
-                valor_vendas = :valor_vendas,
-                valor_sangrias = :valor_sangrias,
-                valor_suprimentos = :valor_suprimentos,
-                observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :observacoes),
-                status = 'fechado'
-                WHERE id = :id
-            ");
-            
-            $caixa_id = $caixa['id'];
-            $obs_fechamento = $observacoes;
-            
-            $stmt->bindParam(':id', $caixa_id, PDO::PARAM_INT);
-            $stmt->bindParam(':valor_final', $valor_final, PDO::PARAM_STR);
-            $stmt->bindParam(':valor_vendas', $valor_vendas, PDO::PARAM_STR);
-            $stmt->bindParam(':valor_sangrias', $valor_sangrias, PDO::PARAM_STR);
-            $stmt->bindParam(':valor_suprimentos', $valor_suprimentos, PDO::PARAM_STR);
-            $stmt->bindParam(':observacoes', $obs_fechamento, PDO::PARAM_STR);
-            
-            $stmt->execute();
-            
-            // Registrar no log do sistema
-            if (isset($GLOBALS['log'])) {
-                $GLOBALS['log']->registrar(
-                    'Caixa', 
-                    "Caixa #{$caixa['id']} fechado com valor final de " . formatarDinheiro($valor_final)
-                );
-            }
-            
-            // Calcular diferença entre valor esperado e valor informado
-            $valor_esperado = $caixa['valor_inicial'] + $valor_vendas + $valor_suprimentos - $valor_sangrias;
-            $diferenca = $valor_final - $valor_esperado;
-            
-            return [
-                'caixa_id' => $caixa['id'],
-                'valor_inicial' => $caixa['valor_inicial'],
-                'valor_final' => $valor_final,
-                'valor_vendas' => $valor_vendas,
-                'valor_sangrias' => $valor_sangrias,
-                'valor_suprimentos' => $valor_suprimentos,
-                'valor_esperado' => $valor_esperado,
-                'diferenca' => $diferenca
-            ];
-            
-        } catch (Exception $e) {
-            error_log("Erro ao fechar caixa: " . $e->getMessage());
-            throw $e;
+// fechar caixa
+public function fechar($caixa_id, $valor_final, $observacoes = '') {
+    try {
+        // Verificar se existe um caixa aberto
+        $caixa = $this->buscarPorId($caixa_id);
+        if (!$caixa || $caixa['status'] != 'aberto') {
+            throw new Exception("Não há um caixa aberto para fechar.");
         }
+        
+        // Calcular totais diretamente da tabela de movimentações
+        $stmt = $this->pdo->prepare("
+            SELECT 
+                SUM(CASE WHEN tipo = 'venda' THEN valor ELSE 0 END) AS valor_vendas,
+                SUM(CASE WHEN tipo = 'sangria' THEN valor ELSE 0 END) AS valor_sangrias,
+                SUM(CASE WHEN tipo = 'suprimento' THEN valor ELSE 0 END) AS valor_suprimentos
+            FROM movimentacoes_caixa 
+            WHERE caixa_id = :caixa_id
+        ");
+        
+        $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $totais = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $valor_vendas = $totais['valor_vendas'] ?? 0;
+        $valor_sangrias = $totais['valor_sangrias'] ?? 0;
+        $valor_suprimentos = $totais['valor_suprimentos'] ?? 0;
+        
+        // Registrar valores em log para debug
+        error_log("Fechamento de caixa #{$caixa_id}: Vendas={$valor_vendas}, Sangrias={$valor_sangrias}, Suprimentos={$valor_suprimentos}");
+        
+        // Atualizar o caixa com os valores calculados diretamente do banco
+        $stmt = $this->pdo->prepare("
+            UPDATE caixas SET
+            data_fechamento = NOW(),
+            valor_final = :valor_final,
+            valor_vendas = :valor_vendas,
+            valor_sangrias = :valor_sangrias,
+            valor_suprimentos = :valor_suprimentos,
+            observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :observacoes),
+            status = 'fechado'
+            WHERE id = :id
+        ");
+        
+        $stmt->bindParam(':id', $caixa_id, PDO::PARAM_INT);
+        $stmt->bindParam(':valor_final', $valor_final, PDO::PARAM_STR);
+        $stmt->bindParam(':valor_vendas', $valor_vendas, PDO::PARAM_STR);
+        $stmt->bindParam(':valor_sangrias', $valor_sangrias, PDO::PARAM_STR);
+        $stmt->bindParam(':valor_suprimentos', $valor_suprimentos, PDO::PARAM_STR);
+        $stmt->bindParam(':observacoes', $observacoes, PDO::PARAM_STR);
+        
+        $stmt->execute();
+        
+        // Calcular diferença entre valor esperado e valor informado
+        $valor_esperado = $caixa['valor_inicial'] + $valor_vendas + $valor_suprimentos - $valor_sangrias;
+        $diferenca = $valor_final - $valor_esperado;
+        
+        return [
+            'caixa_id' => $caixa_id,
+            'valor_inicial' => $caixa['valor_inicial'],
+            'valor_final' => $valor_final,
+            'valor_vendas' => $valor_vendas,
+            'valor_sangrias' => $valor_sangrias,
+            'valor_suprimentos' => $valor_suprimentos,
+            'valor_esperado' => $valor_esperado,
+            'diferenca' => $diferenca
+        ];
+        
+    } catch (Exception $e) {
+        error_log("Erro ao fechar caixa: " . $e->getMessage());
+        throw $e;
     }
+}
 
     // Listar movimentações do caixa atual
     public function listarMovimentacoes($caixa_id = null) {

@@ -191,7 +191,7 @@ function salvarCliente() {
     }
 }
 
-// Função para finalizar venda
+// Função para finalizar venda (corrigida para ajax_pdv.php)
 function finalizarVenda() {
     global $venda, $caixa, $config_sistema;
     
@@ -204,6 +204,9 @@ function finalizarVenda() {
             echo json_encode(['status' => 'error', 'message' => 'Dados da venda não informados']);
             return;
         }
+        
+        // Log para debug
+        error_log("Venda JSON recebido: " . $venda_json);
         
         $venda_dados = json_decode($venda_json, true);
         
@@ -225,10 +228,24 @@ function finalizarVenda() {
         }
         
         // Log para debug
-        error_log("Dados da venda preparados: " . print_r($venda_dados, true));
+        error_log("Dados da venda após processamento: " . print_r($venda_dados, true));
         
         // Adicionar dados padrão
         $venda_dados['status'] = 'finalizada';
+        
+        // Verificar se a classe Venda está disponível
+        if (!isset($venda) || !is_object($venda)) {
+            error_log("ERRO CRÍTICO: Objeto venda não está definido");
+            echo json_encode(['status' => 'error', 'message' => 'Erro interno: Sistema não inicializado corretamente']);
+            return;
+        }
+        
+        // Verificar se o método adicionar existe
+        if (!method_exists($venda, 'adicionar')) {
+            error_log("ERRO CRÍTICO: Método adicionar não existe na classe Venda");
+            echo json_encode(['status' => 'error', 'message' => 'Erro interno: Método de venda não disponível']);
+            return;
+        }
         
         // Finalizar venda
         $venda_id = $venda->adicionar($venda_dados);
@@ -236,35 +253,58 @@ function finalizarVenda() {
         if ($venda_id) {
             error_log("Venda finalizada com ID: " . $venda_id);
             
-            // Registrar a venda no caixa se a configuração exigir caixa aberto
-            if ($config_sistema->buscar()['caixa_obrigatorio'] == 1) {
-                $caixa_aberto = $caixa->verificarCaixaAberto();
-                if ($caixa_aberto) {
-                    try {
-                        // Adicionar a venda como movimentação no caixa
-                        $dados_movimentacao = [
-                            'tipo' => 'venda',
-                            'valor' => $venda_dados['valor_total'],
-                            'forma_pagamento' => $venda_dados['forma_pagamento'],
-                            'documento_id' => $venda_id,
-                            'observacoes' => 'Venda #' . $venda_id
-                        ];
-                        
-                        $movimento_id = $caixa->adicionarMovimentacao($dados_movimentacao);
-                        error_log("Movimentação de caixa registrada com ID: " . $movimento_id);
-                    } catch (Exception $e) {
-                        // Apenas registra o erro, não impede a conclusão da venda
-                        error_log("Erro ao registrar venda no caixa: " . $e->getMessage());
+            // Verificar se a classe config_sistema está disponível
+            if (isset($config_sistema) && is_object($config_sistema)) {
+                $config = $config_sistema->buscar();
+                
+                // Registrar a venda no caixa se a configuração exigir caixa aberto
+                if (isset($config['caixa_obrigatorio']) && $config['caixa_obrigatorio'] == 1) {
+                    if (isset($caixa) && is_object($caixa)) {
+                        $caixa_aberto = $caixa->verificarCaixaAberto();
+                        if ($caixa_aberto) {
+                            try {
+                                // Adicionar a venda como movimentação no caixa
+                                $dados_movimentacao = [
+                                    'tipo' => 'venda',
+                                    'valor' => $venda_dados['valor_total'],
+                                    'forma_pagamento' => $venda_dados['forma_pagamento'],
+                                    'documento_id' => $venda_id,
+                                    'observacoes' => 'Venda #' . $venda_id
+                                ];
+                                
+                                $movimento_id = $caixa->adicionarMovimentacao($dados_movimentacao);
+                                error_log("Movimentação de caixa registrada com ID: " . $movimento_id);
+                            } catch (Exception $e) {
+                                // Apenas registra o erro, não impede a conclusão da venda
+                                error_log("Erro ao registrar venda no caixa: " . $e->getMessage());
+                            }
+                        } else {
+                            error_log("Caixa não está aberto, movimentação não registrada");
+                        }
+                    } else {
+                        error_log("Objeto caixa não está disponível");
                     }
                 } else {
-                    error_log("Caixa não está aberto, movimentação não registrada");
+                    error_log("Caixa obrigatório não está ativado");
+                }
+            } else {
+                error_log("Objeto config_sistema não está disponível");
+            }
+            
+            // Verificar configuração para impressão automática
+            $imprimir = false;
+            if (isset($config_sistema) && is_object($config_sistema)) {
+                $config = $config_sistema->buscar();
+                if (isset($config['impressao_automatica']) && $config['impressao_automatica']) {
+                    $imprimir = true;
                 }
             }
             
             echo json_encode([
                 'status' => 'success', 
                 'message' => 'Venda finalizada com sucesso',
-                'venda_id' => $venda_id
+                'venda_id' => $venda_id,
+                'imprimir' => $imprimir
             ]);
         } else {
             error_log("Falha ao finalizar venda. Retorno false da função venda->adicionar()");
