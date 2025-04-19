@@ -4,10 +4,16 @@ verificarLogin();
 
 // Parâmetros para relatórios
 $tipo_relatorio = isset($_GET['tipo']) ? $_GET['tipo'] : 'vendas_periodo';
-$data_inicio = isset($_GET['data_inicio']) ? $_GET['data_inicio'] : date('Y-m-d', strtotime('-30 days'));
+$data_inicio = isset($_GET['data_inicio']) ? $_GET['data_inicio'] : date('Y-m-d');
+$hora_inicio = isset($_GET['hora_inicio']) ? $_GET['hora_inicio'] : '00:00';
 $data_fim = isset($_GET['data_fim']) ? $_GET['data_fim'] : date('Y-m-d');
+$hora_fim = isset($_GET['hora_fim']) ? $_GET['hora_fim'] : '23:59';
 $mes = isset($_GET['mes']) ? $_GET['mes'] : date('m');
 $ano = isset($_GET['ano']) ? $_GET['ano'] : date('Y');
+
+// Concatenação de data e hora para formar o datetime
+$datetime_inicio = $data_inicio . ' ' . $hora_inicio . ':00';
+$datetime_fim = $data_fim . ' ' . $hora_fim . ':59';
 
 // Dados do relatório
 $dados_relatorio = [];
@@ -17,17 +23,17 @@ $titulo_relatorio = '';
 switch ($tipo_relatorio) {
     case 'vendas_periodo':
         $titulo_relatorio = 'Vendas por Período';
-        $dados_relatorio = $venda->relatorioVendasPorPeriodo($data_inicio, $data_fim);
+        $dados_relatorio = $venda->relatorioVendasPorPeriodo($datetime_inicio, $datetime_fim);
         break;
         
     case 'vendas_vendedor':
         $titulo_relatorio = 'Vendas por Vendedor';
-        $dados_relatorio = $venda->relatorioVendasPorVendedor($data_inicio, $data_fim);
+        $dados_relatorio = $venda->relatorioVendasPorVendedor($datetime_inicio, $datetime_fim);
         break;
         
     case 'produtos_mais_vendidos':
         $titulo_relatorio = 'Produtos Mais Vendidos';
-        $dados_relatorio = $venda->relatorioProdutosMaisVendidos($data_inicio, $data_fim);
+        $dados_relatorio = $venda->relatorioProdutosMaisVendidos($datetime_inicio, $datetime_fim);
         break;
         
     case 'estoque_atual':
@@ -112,24 +118,32 @@ include 'header.php';
                     </button>
                 </div>
                 <div class="card-body">
-                    <!-- Filtros para relatórios com período -->
-                    <?php if (in_array($tipo_relatorio, ['vendas_periodo', 'vendas_vendedor', 'produtos_mais_vendidos', 'lucratividade'])): ?>
-                    <form method="get" action="" class="mb-4 row g-3 align-items-end">
-                        <input type="hidden" name="tipo" value="<?php echo $tipo_relatorio; ?>">
-                        
-                        <div class="col-md-4">
-                            <label for="data_inicio" class="form-label">Data Inicial</label>
-                            <input type="date" class="form-control" id="data_inicio" name="data_inicio" value="<?php echo $data_inicio; ?>">
-                        </div>
-                        <div class="col-md-4">
-                            <label for="data_fim" class="form-label">Data Final</label>
-                            <input type="date" class="form-control" id="data_fim" name="data_fim" value="<?php echo $data_fim; ?>">
-                        </div>
-                        <div class="col-md-4">
-                            <button type="submit" class="btn btn-primary w-100">Filtrar</button>
-                        </div>
-                    </form>
-                    <?php endif; ?>
+<!-- Filtros para relatórios com período -->
+<?php if (in_array($tipo_relatorio, ['vendas_periodo', 'vendas_vendedor', 'produtos_mais_vendidos', 'lucratividade'])): ?>
+<form method="get" action="" class="mb-4 row g-3 align-items-end">
+    <input type="hidden" name="tipo" value="<?php echo $tipo_relatorio; ?>">
+    
+    <div class="col-md-3">
+        <label for="data_inicio" class="form-label">Data Inicial</label>
+        <input type="date" class="form-control" id="data_inicio" name="data_inicio" value="<?php echo $data_inicio; ?>">
+    </div>
+    <div class="col-md-2">
+        <label for="hora_inicio" class="form-label">Hora Inicial</label>
+        <input type="time" class="form-control" id="hora_inicio" name="hora_inicio" value="<?php echo $hora_inicio; ?>">
+    </div>
+    <div class="col-md-3">
+        <label for="data_fim" class="form-label">Data Final</label>
+        <input type="date" class="form-control" id="data_fim" name="data_fim" value="<?php echo $data_fim; ?>">
+    </div>
+    <div class="col-md-2">
+        <label for="hora_fim" class="form-label">Hora Final</label>
+        <input type="time" class="form-control" id="hora_fim" name="hora_fim" value="<?php echo $hora_fim; ?>">
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+    </div>
+</form>
+<?php endif; ?>
                     
                     <!-- Filtros para faturamento diário -->
                     <?php if ($tipo_relatorio == 'faturamento_diario'): ?>

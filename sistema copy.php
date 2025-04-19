@@ -2141,89 +2141,89 @@ public function adicionar($dados) {
         }
     }
 
- // Relatório de vendas por período
- public function relatorioVendasPorPeriodo($datetime_inicio, $datetime_fim) {
-    try {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                v.id, 
-                DATE_FORMAT(v.data_venda, '%d/%m/%Y %H:%i') AS data, 
-                v.valor_total, 
-                v.desconto,
-                v.forma_pagamento,
-                u.nome AS vendedor,
-                c.nome AS cliente
-            FROM vendas v
-            LEFT JOIN usuarios u ON v.usuario_id = u.id
-            LEFT JOIN clientes c ON v.cliente_id = c.id
-            WHERE v.data_venda BETWEEN :datetime_inicio AND :datetime_fim
-            AND v.status = 'finalizada'
-            ORDER BY v.data_venda
-        ");
-        
-        $stmt->bindParam(':datetime_inicio', $datetime_inicio);
-        $stmt->bindParam(':datetime_fim', $datetime_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    } catch (Exception $e) {
-        error_log("Erro ao gerar relatório de vendas por período: " . $e->getMessage());
-        return [];
+    // Relatório de vendas por período
+    public function relatorioVendasPorPeriodo($data_inicio, $data_fim) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    v.id, 
+                    DATE_FORMAT(v.data_venda, '%d/%m/%Y') AS data, 
+                    v.valor_total, 
+                    v.desconto,
+                    v.forma_pagamento,
+                    u.nome AS vendedor,
+                    c.nome AS cliente
+                FROM vendas v
+                LEFT JOIN usuarios u ON v.usuario_id = u.id
+                LEFT JOIN clientes c ON v.cliente_id = c.id
+                WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
+                AND v.status = 'finalizada'
+                ORDER BY v.data_venda
+            ");
+            
+            $stmt->bindParam(':data_inicio', $data_inicio);
+            $stmt->bindParam(':data_fim', $data_fim);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            error_log("Erro ao gerar relatório de vendas por período: " . $e->getMessage());
+            return [];
+        }
     }
- }
 
- // Relatório de vendas por vendedor
- public function relatorioVendasPorVendedor($datetime_inicio, $datetime_fim) {
-    try {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                u.nome AS vendedor,
-                COUNT(v.id) AS total_vendas,
-                SUM(v.valor_total) AS valor_total
-            FROM vendas v
-            LEFT JOIN usuarios u ON v.usuario_id = u.id
-            WHERE v.data_venda BETWEEN :datetime_inicio AND :datetime_fim
-            AND v.status = 'finalizada'
-            GROUP BY v.usuario_id
-            ORDER BY valor_total DESC
-        ");
-        
-        $stmt->bindParam(':datetime_inicio', $datetime_inicio);
-        $stmt->bindParam(':datetime_fim', $datetime_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    } catch (Exception $e) {
-        error_log("Erro ao gerar relatório de vendas por vendedor: " . $e->getMessage());
-        return [];
+    // Relatório de vendas por vendedor
+    public function relatorioVendasPorVendedor($data_inicio, $data_fim) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    u.nome AS vendedor,
+                    COUNT(v.id) AS total_vendas,
+                    SUM(v.valor_total) AS valor_total
+                FROM vendas v
+                LEFT JOIN usuarios u ON v.usuario_id = u.id
+                WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
+                AND v.status = 'finalizada'
+                GROUP BY v.usuario_id
+                ORDER BY valor_total DESC
+            ");
+            
+            $stmt->bindParam(':data_inicio', $data_inicio);
+            $stmt->bindParam(':data_fim', $data_fim);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            error_log("Erro ao gerar relatório de vendas por vendedor: " . $e->getMessage());
+            return [];
+        }
     }
- }
 
- // Relatório de produtos mais vendidos
- public function relatorioProdutosMaisVendidos($datetime_inicio, $datetime_fim) {
-    try {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                p.codigo,
-                p.nome AS produto,
-                SUM(i.quantidade) AS quantidade_total,
-                SUM(i.subtotal) AS valor_total
-            FROM itens_venda i
-            LEFT JOIN produtos p ON i.produto_id = p.id
-            LEFT JOIN vendas v ON i.venda_id = v.id
-            WHERE v.data_venda BETWEEN :datetime_inicio AND :datetime_fim
-            AND v.status = 'finalizada'
-            GROUP BY i.produto_id
-            ORDER BY quantidade_total DESC
-        ");
-        
-        $stmt->bindParam(':datetime_inicio', $datetime_inicio);
-        $stmt->bindParam(':datetime_fim', $datetime_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    } catch (Exception $e) {
-        error_log("Erro ao gerar relatório de produtos mais vendidos: " . $e->getMessage());
-        return [];
+    // Relatório de produtos mais vendidos
+    public function relatorioProdutosMaisVendidos($data_inicio, $data_fim) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    p.codigo,
+                    p.nome AS produto,
+                    SUM(i.quantidade) AS quantidade_total,
+                    SUM(i.subtotal) AS valor_total
+                FROM itens_venda i
+                LEFT JOIN produtos p ON i.produto_id = p.id
+                LEFT JOIN vendas v ON i.venda_id = v.id
+                WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
+                AND v.status = 'finalizada'
+                GROUP BY i.produto_id
+                ORDER BY quantidade_total DESC
+            ");
+            
+            $stmt->bindParam(':data_inicio', $data_inicio);
+            $stmt->bindParam(':data_fim', $data_fim);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            error_log("Erro ao gerar relatório de produtos mais vendidos: " . $e->getMessage());
+            return [];
+        }
     }
- }
 }
 
 // Classe para gerenciar compras (entrada de produtos)
@@ -3267,50 +3267,50 @@ class Relatorio {
         }
     }
 
-// Relatório de lucratividade
-public function lucratividade($datetime_inicio, $datetime_fim) {
-    try {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                v.id AS venda_id,
-                DATE_FORMAT(v.data_venda, '%d/%m/%Y %H:%i') AS data,
-                v.valor_total AS receita,
-                (
-                    SELECT SUM(iv.quantidade * p.preco_custo)
-                    FROM itens_venda iv
-                    LEFT JOIN produtos p ON iv.produto_id = p.id
-                    WHERE iv.venda_id = v.id
-                ) AS custo,
-                (
-                    v.valor_total - (
+    // Relatório de lucratividade
+    public function lucratividade($data_inicio, $data_fim) {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 
+                    v.id AS venda_id,
+                    DATE_FORMAT(v.data_venda, '%d/%m/%Y') AS data,
+                    v.valor_total AS receita,
+                    (
                         SELECT SUM(iv.quantidade * p.preco_custo)
                         FROM itens_venda iv
                         LEFT JOIN produtos p ON iv.produto_id = p.id
                         WHERE iv.venda_id = v.id
-                    )
-                ) AS lucro,
-                (
-                    (v.valor_total - (
-                        SELECT SUM(iv.quantidade * p.preco_custo)
-                        FROM itens_venda iv
-                        LEFT JOIN produtos p ON iv.produto_id = p.id
-                        WHERE iv.venda_id = v.id
-                    )) / v.valor_total * 100
-                ) AS margem_lucro
-            FROM vendas v
-            WHERE v.data_venda BETWEEN :datetime_inicio AND :datetime_fim
-            AND v.status = 'finalizada'
-            ORDER BY v.data_venda
-        ");
-        
-        $stmt->bindParam(':datetime_inicio', $datetime_inicio);
-        $stmt->bindParam(':datetime_fim', $datetime_fim);
-        $stmt->execute();
-        return $stmt->fetchAll();
-    } catch (Exception $e) {
-        error_log("Erro ao gerar relatório de lucratividade: " . $e->getMessage());
-        return [];
+                    ) AS custo,
+                    (
+                        v.valor_total - (
+                            SELECT SUM(iv.quantidade * p.preco_custo)
+                            FROM itens_venda iv
+                            LEFT JOIN produtos p ON iv.produto_id = p.id
+                            WHERE iv.venda_id = v.id
+                        )
+                    ) AS lucro,
+                    (
+                        (v.valor_total - (
+                            SELECT SUM(iv.quantidade * p.preco_custo)
+                            FROM itens_venda iv
+                            LEFT JOIN produtos p ON iv.produto_id = p.id
+                            WHERE iv.venda_id = v.id
+                        )) / v.valor_total * 100
+                    ) AS margem_lucro
+                FROM vendas v
+                WHERE v.data_venda BETWEEN :data_inicio AND :data_fim
+                AND v.status = 'finalizada'
+                ORDER BY v.data_venda
+            ");
+            
+            $stmt->bindParam(':data_inicio', $data_inicio);
+            $stmt->bindParam(':data_fim', $data_fim);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (Exception $e) {
+            error_log("Erro ao gerar relatório de lucratividade: " . $e->getMessage());
+            return [];
+        }
     }
-}
 }
 ?>
