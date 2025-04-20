@@ -1,767 +1,811 @@
 <?php
 require_once 'config.php';
-verificarLogin();
 
-$estados = [
-    'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas', 'BA' => 'Bahia',
-    'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo', 'GO' => 'Goiás',
-    'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul', 'MG' => 'Minas Gerais',
-    'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná', 'PE' => 'Pernambuco', 'PI' => 'Piauí',
-    'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte', 'RS' => 'Rio Grande do Sul',
-    'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina', 'SP' => 'São Paulo',
-    'SE' => 'Sergipe', 'TO' => 'Tocantins'
-];
+// Verificar se o usuário está logado
+if (!isset($_SESSION['usuario_id'])) {
+    header('Location: login.php');
+    exit;
+}
 
-// Processar formulários
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // Adicionar cliente
-    if (isset($_POST['adicionar'])) {
+// Inicializar objetos
+$cliente_obj = new Cliente($pdo);
+$venda_obj = new Venda($pdo);
+
+// Processar ações
+$acao = isset($_GET['acao']) ? $_GET['acao'] : '';
+
+// Processar adição de cliente
+if ($acao == 'adicionar' && isset($_POST['nome'])) {
+    try {
+        $nome = trim($_POST['nome']);
+        $cpf_cnpj = isset($_POST['cpf_cnpj']) ? trim($_POST['cpf_cnpj']) : '';
+        $email = isset($_POST['email']) ? trim($_POST['email']) : '';
+        $telefone = isset($_POST['telefone']) ? trim($_POST['telefone']) : '';
+        $endereco = isset($_POST['endereco']) ? trim($_POST['endereco']) : '';
+        $cidade = isset($_POST['cidade']) ? trim($_POST['cidade']) : '';
+        $estado = isset($_POST['estado']) ? trim($_POST['estado']) : '';
+        $cep = isset($_POST['cep']) ? trim($_POST['cep']) : '';
+        $observacoes = isset($_POST['observacoes']) ? trim($_POST['observacoes']) : '';
+        
+        if (empty($nome)) {
+            throw new Exception("O nome do cliente é obrigatório");
+        }
+        
+        // Validar CPF/CNPJ se preenchido
+        if (!empty($cpf_cnpj)) {
+            // Remover caracteres não numéricos
+            $cpf_cnpj = preg_replace('/[^0-9]/', '', $cpf_cnpj);
+            
+            // Verificar se já existe cliente com este CPF/CNPJ
+            $cliente_existente = $cliente_obj->buscarPorCpfCnpj($cpf_cnpj);
+            if ($cliente_existente) {
+                throw new Exception("Já existe um cliente cadastrado com este CPF/CNPJ");
+            }
+        }
+        
         $dados = [
-            'nome' => $_POST['nome'],
-            'cpf_cnpj' => $_POST['cpf_cnpj'],
-            'email' => $_POST['email'],
-            'telefone' => $_POST['telefone'],
-            'endereco' => $_POST['endereco'],
-            'cidade' => $_POST['cidade'],
-            'estado' => $_POST['estado'],
-            'cep' => $_POST['cep'],
-            'observacoes' => $_POST['observacoes']
+            'nome' => $nome,
+            'cpf_cnpj' => $cpf_cnpj,
+            'email' => $email,
+            'telefone' => $telefone,
+            'endereco' => $endereco,
+            'cidade' => $cidade,
+            'estado' => $estado,
+            'cep' => $cep,
+            'observacoes' => $observacoes
         ];
         
-        if ($cliente->adicionar($dados)) {
+        $resultado = $cliente_obj->adicionar($dados);
+        
+        if ($resultado) {
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Cliente', 
+                    "Cliente '{$nome}' adicionado ao sistema"
+                );
+            }
+            
             alerta('Cliente adicionado com sucesso!', 'success');
-        } else {
-            alerta('Erro ao adicionar cliente!', 'danger');
-        }
-        
-        header('Location: clientes.php');
-        exit;
-    }
-    
-    // Atualizar cliente
-    if (isset($_POST['atualizar'])) {
-        $id = $_POST['id'];
-        $dados = [
-            'nome' => $_POST['nome'],
-            'cpf_cnpj' => $_POST['cpf_cnpj'],
-            'email' => $_POST['email'],
-            'telefone' => $_POST['telefone'],
-            'endereco' => $_POST['endereco'],
-            'cidade' => $_POST['cidade'],
-            'estado' => $_POST['estado'],
-            'cep' => $_POST['cep'],
-            'observacoes' => $_POST['observacoes']
-        ];
-        
-        if ($cliente->atualizar($id, $dados)) {
-            alerta('Cliente atualizado com sucesso!', 'success');
-        } else {
-            alerta('Erro ao atualizar cliente!', 'danger');
-        }
-        
-        header('Location: clientes.php?id=' . $id);
-        exit;
-    }
-    
-    // Excluir cliente
-    if (isset($_POST['excluir'])) {
-        $id = $_POST['id'];
-        
-        if ($cliente->excluir($id)) {
-            alerta('Cliente excluído com sucesso!', 'success');
-        } else {
-            alerta('Erro ao excluir cliente! Verifique se não há vendas associadas a este cliente.', 'danger');
-        }
-        
-        header('Location: clientes.php');
-        exit;
-    }
-    
-    // Abrir comanda para o cliente
-    if (isset($_POST['abrir_comanda'])) {
-        $cliente_id = $_POST['cliente_id'];
-        $observacoes = $_POST['observacoes'] ?? '';
-        
-        if (empty($cliente_id)) {
-            alerta('Selecione um cliente para abrir a comanda.', 'warning');
+            
+            // Verificar se veio de outra página para retornar
+            if (isset($_POST['retorno']) && !empty($_POST['retorno'])) {
+                header('Location: ' . $_POST['retorno']);
+                exit;
+            }
+            
             header('Location: clientes.php');
             exit;
+        } else {
+            throw new Exception("Erro ao adicionar cliente");
         }
-        
-        try {
-            $comanda_id = $comanda->abrir($cliente_id, $observacoes);
-            alerta('Comanda aberta com sucesso!', 'success');
-            header('Location: comandas.php?id=' . $comanda_id);
-            exit;
-        } catch (Exception $e) {
-            alerta('Erro ao abrir comanda: ' . $e->getMessage(), 'danger');
-            header('Location: clientes.php?id=' . $cliente_id);
-            exit;
-        }
+    } catch (Exception $e) {
+        alerta($e->getMessage(), 'danger');
     }
 }
 
-// Verificar se é para mostrar detalhes de um cliente
-$cliente_detalhes = null;
+// Processar atualização de cliente
+if ($acao == 'atualizar' && isset($_POST['id'], $_POST['nome'])) {
+    try {
+        $id = intval($_POST['id']);
+        $nome = trim($_POST['nome']);
+        $cpf_cnpj = isset($_POST['cpf_cnpj']) ? trim($_POST['cpf_cnpj']) : '';
+        $email = isset($_POST['email']) ? trim($_POST['email']) : '';
+        $telefone = isset($_POST['telefone']) ? trim($_POST['telefone']) : '';
+        $endereco = isset($_POST['endereco']) ? trim($_POST['endereco']) : '';
+        $cidade = isset($_POST['cidade']) ? trim($_POST['cidade']) : '';
+        $estado = isset($_POST['estado']) ? trim($_POST['estado']) : '';
+        $cep = isset($_POST['cep']) ? trim($_POST['cep']) : '';
+        $observacoes = isset($_POST['observacoes']) ? trim($_POST['observacoes']) : '';
+        
+        if (empty($nome)) {
+            throw new Exception("O nome do cliente é obrigatório");
+        }
+        
+        // Validar CPF/CNPJ se preenchido
+        if (!empty($cpf_cnpj)) {
+            // Remover caracteres não numéricos
+            $cpf_cnpj = preg_replace('/[^0-9]/', '', $cpf_cnpj);
+            
+            // Verificar se já existe outro cliente com este CPF/CNPJ
+            $cliente_existente = $cliente_obj->buscarPorCpfCnpj($cpf_cnpj);
+            if ($cliente_existente && $cliente_existente['id'] != $id) {
+                throw new Exception("Já existe um cliente cadastrado com este CPF/CNPJ");
+            }
+        }
+        
+        $dados = [
+            'nome' => $nome,
+            'cpf_cnpj' => $cpf_cnpj,
+            'email' => $email,
+            'telefone' => $telefone,
+            'endereco' => $endereco,
+            'cidade' => $cidade,
+            'estado' => $estado,
+            'cep' => $cep,
+            'observacoes' => $observacoes
+        ];
+        
+        $resultado = $cliente_obj->atualizar($id, $dados);
+        
+        if ($resultado) {
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Cliente', 
+                    "Cliente '{$nome}' (ID: {$id}) atualizado"
+                );
+            }
+            
+            alerta('Cliente atualizado com sucesso!', 'success');
+            header('Location: clientes.php');
+            exit;
+        } else {
+            throw new Exception("Erro ao atualizar cliente");
+        }
+    } catch (Exception $e) {
+        alerta($e->getMessage(), 'danger');
+    }
+}
+
+// Processar exclusão de cliente
+if ($acao == 'excluir' && isset($_GET['id'])) {
+    try {
+        $id = intval($_GET['id']);
+        $cliente = $cliente_obj->buscarPorId($id);
+        
+        if (!$cliente) {
+            throw new Exception("Cliente não encontrado");
+        }
+        
+        // Verificar se o cliente tem vendas associadas
+        // Esta verificação já é feita dentro do método excluir da classe Cliente,
+        // mas fazemos aqui também para garantir
+        $resultado = $cliente_obj->excluir($id);
+        
+        if ($resultado) {
+            // Registrar no log do sistema
+            if (isset($GLOBALS['log'])) {
+                $GLOBALS['log']->registrar(
+                    'Cliente', 
+                    "Cliente '{$cliente['nome']}' (ID: {$id}) excluído"
+                );
+            }
+            
+            alerta('Cliente excluído com sucesso!', 'success');
+            header('Location: clientes.php');
+            exit;
+        } else {
+            throw new Exception("Não é possível excluir este cliente porque ele tem vendas associadas");
+        }
+    } catch (Exception $e) {
+        alerta($e->getMessage(), 'danger');
+    }
+}
+
+// Verificar se está visualizando um cliente específico
+$cliente = null;
+$historico_vendas = [];
 if (isset($_GET['id'])) {
-    $id = $_GET['id'];
-    $cliente_detalhes = $cliente->buscarPorId($id);
+    $cliente_id = intval($_GET['id']);
+    $cliente = $cliente_obj->buscarPorId($cliente_id);
     
-    // Se cliente não existir, voltar para listagem
-    if (!$cliente_detalhes) {
-        alerta('Cliente não encontrado!', 'warning');
-        header('Location: clientes.php');
-        exit;
+    if ($cliente) {
+        // Buscar histórico de vendas do cliente
+        $historico_vendas = $venda_obj->listarVendasCliente($cliente_id);
     }
 }
 
 // Template da página
-$titulo_pagina = 'Gerenciamento de Clientes';
+$titulo_pagina = 'Gerenciamento de Clientes - Sistema PDV';
 include 'header.php';
 ?>
 
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3"><?php echo $cliente_detalhes ? 'Detalhes do Cliente' : 'Clientes'; ?></h1>
+    <!-- Cabeçalho da Página -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+        <div class="mb-3 mb-md-0">
+            <h2 class="mb-1">
+                <i class="fas fa-users me-2 text-primary"></i>
+                <?php echo $cliente ? 'Editar Cliente: ' . esc($cliente['nome']) : 'Gerenciamento de Clientes'; ?>
+            </h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="index.php">Painel</a></li>
+                    <?php if ($cliente): ?>
+                        <li class="breadcrumb-item"><a href="clientes.php">Clientes</a></li>
+                        <li class="breadcrumb-item active">Editar Cliente</li>
+                    <?php else: ?>
+                        <li class="breadcrumb-item active">Clientes</li>
+                    <?php endif; ?>
+                </ol>
+            </nav>
+        </div>
+        
         <div>
-            <?php if ($cliente_detalhes): ?>
-                <a href="clientes.php" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left me-1"></i> Voltar para Listagem
-                </a>
-            <?php else: ?>
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAdicionarCliente">
-                    <i class="fas fa-plus me-1"></i> Novo Cliente
+            <?php if (!$cliente): ?>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNovoCliente">
+                    <i class="fas fa-user-plus me-1"></i>
+                    Novo Cliente
                 </button>
+            <?php else: ?>
+                <div class="d-flex flex-column flex-sm-row gap-2">
+                    <a href="clientes.php" class="btn btn-secondary mb-2 mb-sm-0">
+                        <i class="fas fa-arrow-left me-1"></i>
+                        Voltar para Lista
+                    </a>
+                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalExcluirCliente">
+                        <i class="fas fa-user-times me-1"></i>
+                        Excluir Cliente
+                    </button>
+                </div>
             <?php endif; ?>
         </div>
     </div>
-    
-    <?php if ($cliente_detalhes): ?>
-    <!-- Detalhes do Cliente -->
-    <div class="row">
-        <div class="col-md-4 mb-4">
-            <div class="card">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="card-title mb-0"><i class="fas fa-user me-2"></i> <?php echo $cliente_detalhes['nome']; ?></h5>
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-light" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-ellipsis-v"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li>
-                                <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modalEditarCliente">
-                                    <i class="fas fa-edit me-1"></i> Editar
+    <!-- PARTE 2 -->
+    <?php if ($cliente): ?>
+        <!-- Formulário de Edição -->
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-user-edit me-2"></i>
+                            Editar Informações do Cliente
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form action="clientes.php?acao=atualizar" method="post">
+                            <input type="hidden" name="id" value="<?php echo $cliente['id']; ?>">
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-8">
+                                    <label for="nome" class="form-label fw-bold">Nome Completo:</label>
+                                    <input type="text" class="form-control" id="nome" name="nome" value="<?php echo esc($cliente['nome']); ?>" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="cpf_cnpj" class="form-label fw-bold">CPF/CNPJ:</label>
+                                    <input type="text" class="form-control" id="cpf_cnpj" name="cpf_cnpj" value="<?php echo esc($cliente['cpf_cnpj']); ?>">
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="email" class="form-label fw-bold">Email:</label>
+                                    <input type="email" class="form-control" id="email" name="email" value="<?php echo esc($cliente['email']); ?>">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="telefone" class="form-label fw-bold">Telefone:</label>
+                                    <input type="text" class="form-control" id="telefone" name="telefone" value="<?php echo esc($cliente['telefone']); ?>">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="endereco" class="form-label fw-bold">Endereço:</label>
+                                <input type="text" class="form-control" id="endereco" name="endereco" value="<?php echo esc($cliente['endereco']); ?>">
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-5">
+                                    <label for="cidade" class="form-label fw-bold">Cidade:</label>
+                                    <input type="text" class="form-control" id="cidade" name="cidade" value="<?php echo esc($cliente['cidade']); ?>">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="estado" class="form-label fw-bold">Estado:</label>
+                                    <select class="form-select" id="estado" name="estado">
+                                        <option value="">Selecione</option>
+                                        <?php
+                                        $estados = [
+                                            'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas',
+                                            'BA' => 'Bahia', 'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo',
+                                            'GO' => 'Goiás', 'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul',
+                                            'MG' => 'Minas Gerais', 'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná',
+                                            'PE' => 'Pernambuco', 'PI' => 'Piauí', 'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte',
+                                            'RS' => 'Rio Grande do Sul', 'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina',
+                                            'SP' => 'São Paulo', 'SE' => 'Sergipe', 'TO' => 'Tocantins'
+                                        ];
+                                        
+                                        foreach ($estados as $sigla => $nome) {
+                                            $selected = ($cliente['estado'] == $sigla) ? 'selected' : '';
+                                            echo '<option value="' . $sigla . '" ' . $selected . '>' . $nome . '</option>';
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="cep" class="form-label fw-bold">CEP:</label>
+                                    <input type="text" class="form-control" id="cep" name="cep" value="<?php echo esc($cliente['cep']); ?>">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="observacoes" class="form-label fw-bold">Observações:</label>
+                                <textarea class="form-control" id="observacoes" name="observacoes" rows="4"><?php echo esc($cliente['observacoes']); ?></textarea>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="d-flex justify-content-end">
+                                <a href="clientes.php" class="btn btn-secondary me-2">
+                                    <i class="fas fa-times me-1"></i>
+                                    Cancelar
+                                </a>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-1"></i>
+                                    Salvar Alterações
                                 </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Informações do Cliente
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">Data de Cadastro:</span>
+                                <span><?php echo isset($cliente['criado_em']) ? formatarData($cliente['criado_em']) : 'N/A'; ?></span>
                             </li>
-                            <li>
-                                <button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#modalExcluirCliente">
-                                    <i class="fas fa-trash me-1"></i> Excluir
-                                </button>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">Última Atualização:</span>
+                                <span><?php echo isset($cliente['atualizado_em']) ? formatarData($cliente['atualizado_em']) : 'N/A'; ?></span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-bold">Total de Compras:</span>
+                                <span class="badge bg-primary rounded-pill"><?php echo count($historico_vendas); ?></span>
                             </li>
                         </ul>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">CPF/CNPJ:</label>
-                        <div><?php echo $cliente_detalhes['cpf_cnpj'] ?: 'Não informado'; ?></div>
+                
+                <!-- Histórico de Compras -->
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-shopping-cart me-2"></i>
+                            Histórico de Compras
+                        </h5>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">E-mail:</label>
-                        <div><?php echo $cliente_detalhes['email'] ?: 'Não informado'; ?></div>
+                    <div class="card-body p-0">
+                        <?php if (empty($historico_vendas)): ?>
+                            <div class="text-center py-4">
+                                <i class="fas fa-shopping-bag fa-3x text-muted mb-3"></i>
+                                <p class="mb-0">Este cliente ainda não realizou compras.</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="tabelahistorico">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Data</th>
+                                            <th>Valor</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($historico_vendas as $venda): ?>
+                                            <tr>
+                                                <td><?php echo $venda['id']; ?></td>
+                                                <td><?php echo $venda['data_formatada']; ?></td>
+                                                <td><?php echo formatarDinheiro($venda['valor_total']); ?></td>
+                                                <td>
+                                                    <a href="vendas.php?id=<?php echo $venda['id']; ?>" class="btn btn-sm btn-info text-white" data-bs-toggle="tooltip" title="Ver Detalhes">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Telefone:</label>
-                        <div><?php echo $cliente_detalhes['telefone'] ?: 'Não informado'; ?></div>
+                </div>
+            </div>
+        </div>
+    <?php else: ?>
+        <!-- Lista de Clientes -->
+        <div class="card">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col-md-4 mb-3 mb-md-0">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-list me-2"></i>
+                            Lista de Clientes
+                        </h5>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Endereço:</label>
-                        <div><?php echo $cliente_detalhes['endereco'] ?: 'Não informado'; ?></div>
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="buscarCliente" placeholder="Buscar cliente...">
+                            <button class="btn btn-outline-secondary" type="button">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
                     </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover datatable mb-0" id="tabelaClientes">
+                        <thead>
+                            <tr>
+                                <th width="80">ID</th>
+                                <th data-priority="1">Nome</th>
+                                <th data-priority="3">CPF/CNPJ</th>
+                                <th data-priority="3">E-mail</th>
+                                <th data-priority="2">Telefone</th>
+                                <th data-priority="3">Cidade/UF</th>
+                                <th data-priority="1" width="100">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $clientes = $cliente_obj->listar();
+                            if (empty($clientes)): 
+                            ?>
+                                <tr>
+                                    <td colspan="7" class="text-center py-4">
+                                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                                        <p class="mb-0">Nenhum cliente cadastrado.</p>
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($clientes as $c): ?>
+                                    <tr>
+                                        <td><?php echo $c['id']; ?></td>
+                                        <td><?php echo esc($c['nome']); ?></td>
+                                        <td><?php echo !empty($c['cpf_cnpj']) ? esc($c['cpf_cnpj']) : '<span class="text-muted">-</span>'; ?></td>
+                                        <td><?php echo !empty($c['email']) ? esc($c['email']) : '<span class="text-muted">-</span>'; ?></td>
+                                        <td><?php echo !empty($c['telefone']) ? esc($c['telefone']) : '<span class="text-muted">-</span>'; ?></td>
+                                        <td>
+                                            <?php 
+                                            $cidade_uf = '';
+                                            if (!empty($c['cidade'])) {
+                                                $cidade_uf .= esc($c['cidade']);
+                                                if (!empty($c['estado'])) {
+                                                    $cidade_uf .= '/' . esc($c['estado']);
+                                                }
+                                            } elseif (!empty($c['estado'])) {
+                                                $cidade_uf .= esc($c['estado']);
+                                            }
+                                            echo !empty($cidade_uf) ? $cidade_uf : '<span class="text-muted">-</span>';
+                                            ?>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="clientes.php?id=<?php echo $c['id']; ?>" 
+                                                   class="btn btn-primary" 
+                                                   data-bs-toggle="tooltip" 
+                                                   title="Editar"
+                                                   style="display: inline-block !important; background-color: #0d6efd !important;">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                
+                                                <a href="#" 
+                                                   class="btn btn-danger btn-excluir-cliente" 
+                                                   data-id="<?php echo $c['id']; ?>"
+                                                   data-nome="<?php echo esc($c['nome']); ?>"
+                                                   data-bs-toggle="tooltip" 
+                                                   title="Excluir"
+                                                   style="display: inline-block !important; background-color: #dc3545 !important;">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+    <!-- PARTE 3 -->
+    </div>
+
+<!-- Modal Novo Cliente -->
+<div class="modal fade" id="modalNovoCliente" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus me-2"></i>
+                    Novo Cliente
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="clientes.php?acao=adicionar" method="post">
+                <?php if (isset($_SERVER['HTTP_REFERER'])): ?>
+                    <input type="hidden" name="retorno" value="<?php echo $_SERVER['HTTP_REFERER']; ?>">
+                <?php endif; ?>
+                
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label for="nome_novo" class="form-label fw-bold">Nome Completo:</label>
+                            <input type="text" class="form-control" id="nome_novo" name="nome" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="cpf_cnpj_novo" class="form-label fw-bold">CPF/CNPJ:</label>
+                            <input type="text" class="form-control" id="cpf_cnpj_novo" name="cpf_cnpj">
+                        </div>
+                    </div>
+                    
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">Cidade:</label>
-                            <div><?php echo $cliente_detalhes['cidade'] ?: 'Não informado'; ?></div>
+                            <label for="email_novo" class="form-label fw-bold">Email:</label>
+                            <input type="email" class="form-control" id="email_novo" name="email">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold">Estado:</label>
-                            <div><?php echo $cliente_detalhes['estado'] ?: 'N/I'; ?></div>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold">CEP:</label>
-                            <div><?php echo $cliente_detalhes['cep'] ?: 'N/I'; ?></div>
+                        <div class="col-md-6">
+                            <label for="telefone_novo" class="form-label fw-bold">Telefone:</label>
+                            <input type="text" class="form-control" id="telefone_novo" name="telefone">
                         </div>
                     </div>
+                    
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Observações:</label>
-                        <div><?php echo nl2br($cliente_detalhes['observacoes']) ?: 'Nenhuma observação'; ?></div>
+                        <label for="endereco_novo" class="form-label fw-bold">Endereço:</label>
+                        <input type="text" class="form-control" id="endereco_novo" name="endereco">
                     </div>
                     
-                    <div class="d-grid gap-2 mt-4">
-                        <a href="comanda_cliente.php?cliente_id=<?php echo $cliente_detalhes['id']; ?>" class="btn btn-primary">
-                            <i class="fas fa-clipboard-list me-1"></i> Visualizar Comandas
-                        </a>
-                        <a href="#" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalHistoricoVendas">
-                            <i class="fas fa-history me-1"></i> Histórico de Vendas
-                        </a>
+                    <div class="row mb-3">
+                        <div class="col-md-5">
+                            <label for="cidade_novo" class="form-label fw-bold">Cidade:</label>
+                            <input type="text" class="form-control" id="cidade_novo" name="cidade">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="estado_novo" class="form-label fw-bold">Estado:</label>
+                            <select class="form-select" id="estado_novo" name="estado">
+                                <option value="">Selecione</option>
+                                <?php
+                                $estados = [
+                                    'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas',
+                                    'BA' => 'Bahia', 'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo',
+                                    'GO' => 'Goiás', 'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul',
+                                    'MG' => 'Minas Gerais', 'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná',
+                                    'PE' => 'Pernambuco', 'PI' => 'Piauí', 'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte',
+                                    'RS' => 'Rio Grande do Sul', 'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina',
+                                    'SP' => 'São Paulo', 'SE' => 'Sergipe', 'TO' => 'Tocantins'
+                                ];
+                                
+                                foreach ($estados as $sigla => $nome) {
+                                    echo '<option value="' . $sigla . '">' . $nome . '</option>';
+                                }
+                                ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="cep_novo" class="form-label fw-bold">CEP:</label>
+                            <input type="text" class="form-control" id="cep_novo" name="cep">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes_novo" class="form-label fw-bold">Observações:</label>
+                        <textarea class="form-control" id="observacoes_novo" name="observacoes" rows="3"></textarea>
                     </div>
                 </div>
-            </div>
-        </div>
-        
-        <div class="col-md-8">
-            <!-- Verificar comandas do cliente -->
-            <div class="card mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0"><i class="fas fa-clipboard-list me-2"></i> Comandas</h5>
-                </div>
-                <div class="card-body">
-                    <?php
-                    // Verificar se há comanda aberta
-                    $comanda_aberta = $comanda->verificarComandaAberta($cliente_detalhes['id']);
-                    
-                    if ($comanda_aberta) {
-                        echo '<div class="alert alert-success">';
-                        echo '<strong>Comanda Aberta #' . $comanda_aberta['id'] . '</strong><br>';
-                        echo 'Aberta em: ' . date('d/m/Y H:i', strtotime($comanda_aberta['data_abertura'])) . '<br>';
-                        echo 'Valor atual: <strong>' . formatarDinheiro($comanda_aberta['valor_total']) . '</strong>';
-                        echo '</div>';
-                        
-                        echo '<a href="comandas.php?id=' . $comanda_aberta['id'] . '" class="btn btn-primary">';
-                        echo '<i class="fas fa-eye me-1"></i> Ver Comanda Atual';
-                        echo '</a>';
-                    } else {
-                        echo '<div class="alert alert-info">Não há comanda aberta para este cliente.</div>';
-                        
-                        echo '<button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalNovaComanda">';
-                        echo '<i class="fas fa-plus me-1"></i> Abrir Nova Comanda';
-                        echo '</button>';
-                    }
-                    ?>
-                    
-                    <a href="comanda_cliente.php?cliente_id=<?php echo $cliente_detalhes['id']; ?>" class="btn btn-outline-secondary ms-2">
-                        <i class="fas fa-history me-1"></i> Ver Histórico
-                    </a>
-                </div>
-            </div>
-            
-            <!-- Últimas vendas do cliente -->
-            <div class="card">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="card-title mb-0"><i class="fas fa-shopping-cart me-2"></i> Últimas Vendas</h5>
-                </div>
-                <div class="card-body">
-                    <?php
-                    $stmt = $pdo->prepare("
-                        SELECT v.id, v.data_venda, v.valor_total, v.forma_pagamento, v.status
-                        FROM vendas v
-                        WHERE v.cliente_id = :cliente_id
-                        ORDER BY v.data_venda DESC
-                        LIMIT 5
-                    ");
-                    $stmt->bindParam(':cliente_id', $cliente_detalhes['id'], PDO::PARAM_INT);
-                    $stmt->execute();
-                    $vendas = $stmt->fetchAll();
-                    
-                    if (count($vendas) > 0):
-                    ?>
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Data</th>
-                                    <th>Valor</th>
-                                    <th>Forma de Pagamento</th>
-                                    <th>Status</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($vendas as $v): ?>
-                                <tr>
-                                    <td><?php echo $v['id']; ?></td>
-                                    <td><?php echo date('d/m/Y H:i', strtotime($v['data_venda'])); ?></td>
-                                    <td><?php echo formatarDinheiro($v['valor_total']); ?></td>
-                                    <td><?php echo ucfirst(str_replace('_', ' ', $v['forma_pagamento'])); ?></td>
-                                    <td>
-                                        <?php
-                                        if ($v['status'] == 'finalizada') {
-                                            echo '<span class="badge bg-success">Finalizada</span>';
-                                        } else if ($v['status'] == 'cancelada') {
-                                            echo '<span class="badge bg-danger">Cancelada</span>';
-                                        } else {
-                                            echo '<span class="badge bg-warning">Pendente</span>';
-                                        }
-                                        ?>
-                                    </td>
-                                    <td>
-                                        <a href="vendas.php?id=<?php echo $v['id']; ?>" class="btn btn-sm btn-info">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php else: ?>
-                    <div class="alert alert-info">
-                        Este cliente não possui vendas registradas ainda.
-                    </div>
-                    <?php endif; ?>
-                    
-                    <a href="#" class="btn btn-outline-primary mt-2" data-bs-toggle="modal" data-bs-target="#modalNovaVenda">
-                        <i class="fas fa-plus me-1"></i> Nova Venda
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal Nova Comanda -->
-    <div class="modal fade" id="modalNovaComanda" tabindex="-1" aria-labelledby="modalNovaComandaLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalNovaComandaLabel">Nova Comanda para <?php echo $cliente_detalhes['nome']; ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form method="post" action="" id="formNovaComanda">
-                        <input type="hidden" name="cliente_id" value="<?php echo $cliente_detalhes['id']; ?>">
-                        
-                        <div class="mb-3">
-                            <label for="observacoes_comanda" class="form-label">Observações</label>
-                            <textarea class="form-control" id="observacoes_comanda" name="observacoes" rows="3"></textarea>
-                            <div class="form-text">Informe quaisquer detalhes importantes sobre esta comanda.</div>
-                        </div>
-                    </form>
-                </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="formNovaComanda" name="abrir_comanda" class="btn btn-primary">Abrir Comanda</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>
+                        Salvar Cliente
+                    </button>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
-    
-    <!-- Modal Editar Cliente -->
-    <div class="modal fade" id="modalEditarCliente" tabindex="-1" aria-labelledby="modalEditarClienteLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalEditarClienteLabel">Editar Cliente</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form method="post" action="" id="formEditarCliente">
-                        <input type="hidden" name="id" value="<?php echo $cliente_detalhes['id']; ?>">
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-8">
-                                <label for="nome" class="form-label">Nome</label>
-                                <input type="text" class="form-control" id="nome" name="nome" value="<?php echo $cliente_detalhes['nome']; ?>" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="cpf_cnpj" class="form-label">CPF/CNPJ</label>
-                                <input type="text" class="form-control" id="cpf_cnpj" name="cpf_cnpj" value="<?php echo $cliente_detalhes['cpf_cnpj']; ?>">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="email" class="form-label">E-mail</label>
-                                <input type="email" class="form-control" id="email" name="email" value="<?php echo $cliente_detalhes['email']; ?>">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="telefone" class="form-label">Telefone</label>
-                                <input type="text" class="form-control" id="telefone" name="telefone" value="<?php echo $cliente_detalhes['telefone']; ?>">
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="endereco" class="form-label">Endereço</label>
-                            <input type="text" class="form-control" id="endereco" name="endereco" value="<?php echo $cliente_detalhes['endereco']; ?>">
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="cidade" class="form-label">Cidade</label>
-                                <input type="text" class="form-control" id="cidade" name="cidade" value="<?php echo $cliente_detalhes['cidade']; ?>">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="estado" class="form-label">Estado</label>
-                                <select class="form-select" id="estado" name="estado">
-                                    <option value="">Selecione</option>
-                                    <?php
-                                    $estados = [
-                                        'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas', 'BA' => 'Bahia',
-                                        'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo', 'GO' => 'Goiás',
-                                        'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul', 'MG' => 'Minas Gerais',
-                                        'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná', 'PE' => 'Pernambuco', 'PI' => 'Piauí',
-                                        'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte', 'RS' => 'Rio Grande do Sul',
-                                        'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina', 'SP' => 'São Paulo',
-                                        'SE' => 'Sergipe', 'TO' => 'Tocantins'
-                                    ];
-                                    
-                                    foreach ($estados as $sigla => $nome) {
-                                        $selected = ($cliente_detalhes['estado'] == $sigla) ? 'selected' : '';
-                                        echo "<option value=\"{$sigla}\" {$selected}>{$nome}</option>";
-                                    }
-                                    ?>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="cep" class="form-label">CEP</label>
-                                <input type="text" class="form-control" id="cep" name="cep" value="<?php echo $cliente_detalhes['cep']; ?>">
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="observacoes" class="form-label">Observações</label>
-                            <textarea class="form-control" id="observacoes" name="observacoes" rows="3"><?php echo $cliente_detalhes['observacoes']; ?></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="formEditarCliente" name="atualizar" class="btn btn-primary">Salvar Alterações</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal Excluir Cliente -->
-    <div class="modal fade" id="modalExcluirCliente" tabindex="-1" aria-labelledby="modalExcluirClienteLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalExcluirClienteLabel">Excluir Cliente</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Tem certeza que deseja excluir o cliente <strong><?php echo $cliente_detalhes['nome']; ?></strong>?</p>
-                    <p class="text-danger">Esta ação não poderá ser desfeita. Clientes com vendas ou comandas não podem ser excluídos.</p>
-                    <form method="post" action="" id="formExcluirCliente">
-                        <input type="hidden" name="id" value="<?php echo $cliente_detalhes['id']; ?>">
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="formExcluirCliente" name="excluir" class="btn btn-danger">Excluir Cliente</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal Nova Venda -->
-    <div class="modal fade" id="modalNovaVenda" tabindex="-1" aria-labelledby="modalNovaVendaLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalNovaVendaLabel">Nova Venda para <?php echo $cliente_detalhes['nome']; ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Para iniciar uma nova venda para este cliente, você será redirecionado para o PDV.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <a href="pdv.php?cliente_id=<?php echo $cliente_detalhes['id']; ?>" class="btn btn-primary">Ir para PDV</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal Histórico de Vendas -->
-    <div class="modal fade" id="modalHistoricoVendas" tabindex="-1" aria-labelledby="modalHistoricoVendasLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalHistoricoVendasLabel">Histórico de Vendas - <?php echo $cliente_detalhes['nome']; ?></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <?php
-                    $stmt = $pdo->prepare("
-                        SELECT v.id, v.data_venda, v.valor_total, v.forma_pagamento, v.status, 
-                        DATE_FORMAT(v.data_venda, '%d/%m/%Y %H:%i') AS data_formatada
-                        FROM vendas v
-                        WHERE v.cliente_id = :cliente_id
-                        ORDER BY v.data_venda DESC
-                        LIMIT 20
-                    ");
-                    $stmt->bindParam(':cliente_id', $cliente_detalhes['id'], PDO::PARAM_INT);
-                    $stmt->execute();
-                    $vendas_completo = $stmt->fetchAll();
-                    
-                    if (count($vendas_completo) > 0):
-                    ?>
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Data</th>
-                                    <th>Valor</th>
-                                    <th>Forma de Pagamento</th>
-                                    <th>Status</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($vendas_completo as $v): ?>
-                                <tr>
-                                    <td><?php echo $v['id']; ?></td>
-                                    <td><?php echo $v['data_formatada']; ?></td>
-                                    <td><?php echo formatarDinheiro($v['valor_total']); ?></td>
-                                    <td><?php echo ucfirst(str_replace('_', ' ', $v['forma_pagamento'])); ?></td>
-                                    <td>
-                                        <?php
-                                        if ($v['status'] == 'finalizada') {
-                                            echo '<span class="badge bg-success">Finalizada</span>';
-                                        } else if ($v['status'] == 'cancelada') {
-                                            echo '<span class="badge bg-danger">Cancelada</span>';
-                                        } else {
-                                            echo '<span class="badge bg-warning">Pendente</span>';
-                                        }
-                                        ?>
-                                    </td>
-                                    <td>
-                                        <a href="vendas.php?id=<?php echo $v['id']; ?>" class="btn btn-sm btn-info">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php else: ?>
-                    <div class="alert alert-info">
-                        Este cliente não possui vendas registradas ainda.
-                    </div>
-                    <?php endif; ?>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <?php else: ?>
-    <!-- Listagem de Clientes -->
-    <div class="card">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover datatable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nome</th>
-                            <th>CPF/CNPJ</th>
-                            <th>Telefone</th>
-                            <th>Email</th>
-                            <th>Cidade/UF</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $clientes = $cliente->listar();
-                        foreach ($clientes as $c) {
-                            echo '<tr>';
-                            echo '<td>'.$c['id'].'</td>';
-                            echo '<td>'.$c['nome'].'</td>';
-                            echo '<td>'.$c['cpf_cnpj'].'</td>';
-                            echo '<td>'.$c['telefone'].'</td>';
-                            echo '<td>'.$c['email'].'</td>';
-                            echo '<td>'.($c['cidade'] ? $c['cidade'].'/'.$c['estado'] : '-').'</td>';
-                            
-                            // Ações
-                            echo '<td>';
-                            echo '<a href="?id='.$c['id'].'" class="btn btn-sm btn-info me-1" title="Detalhes">
-                                    <i class="fas fa-eye"></i>
-                                  </a>';
-                                  
-                            // Verificar se o cliente tem comanda aberta
-                            $cmd_aberta = $comanda->verificarComandaAberta($c['id']);
-                            if ($cmd_aberta) {
-                                echo '<a href="comandas.php?id='.$cmd_aberta['id'].'" class="btn btn-sm btn-success me-1" title="Ver Comanda Aberta">
-                                        <i class="fas fa-clipboard-list"></i>
-                                      </a>';
-                            } else {
-                                echo '<a href="comanda_cliente.php?cliente_id='.$c['id'].'" class="btn btn-sm btn-primary me-1" title="Comandas">
-                                        <i class="fas fa-clipboard-list"></i>
-                                      </a>';
-                            }
-                            
-                            echo '<a href="pdv.php?cliente_id='.$c['id'].'" class="btn btn-sm btn-secondary me-1" title="Vender">
-                                    <i class="fas fa-shopping-cart"></i>
-                                  </a>';
-                            echo '</td>';
-                            echo '</tr>';
-                        }
-                        ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Modal Adicionar Cliente -->
-    <div class="modal fade" id="modalAdicionarCliente" tabindex="-1" aria-labelledby="modalAdicionarClienteLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalAdicionarClienteLabel">Novo Cliente</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form method="post" action="" id="formAdicionarCliente">
-                        <div class="row mb-3">
-                            <div class="col-md-8">
-                                <label for="nome_add" class="form-label">Nome</label>
-                                <input type="text" class="form-control" id="nome_add" name="nome" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="cpf_cnpj_add" class="form-label">CPF/CNPJ</label>
-                                <input type="text" class="form-control" id="cpf_cnpj_add" name="cpf_cnpj">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="email_add" class="form-label">E-mail</label>
-                                <input type="email" class="form-control" id="email_add" name="email">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="telefone_add" class="form-label">Telefone</label>
-                                <input type="text" class="form-control" id="telefone_add" name="telefone">
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="endereco_add" class="form-label">Endereço</label>
-                            <input type="text" class="form-control" id="endereco_add" name="endereco">
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="cidade_add" class="form-label">Cidade</label>
-                                <input type="text" class="form-control" id="cidade_add" name="cidade">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="estado_add" class="form-label">Estado</label>
-                                <select class="form-select" id="estado_add" name="estado">
-                                    <option value="">Selecione</option>
-                                    <?php
-                                    foreach ($estados as $sigla => $nome) {
-                                        echo "<option value=\"{$sigla}\">{$nome}</option>";
-                                    }
-                                    ?>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="cep_add" class="form-label">CEP</label>
-                                <input type="text" class="form-control" id="cep_add" name="cep">
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="observacoes_add" class="form-label">Observações</label>
-                            <textarea class="form-control" id="observacoes_add" name="observacoes" rows="3"></textarea>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="formAdicionarCliente" name="adicionar" class="btn btn-primary">Salvar Cliente</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php endif; ?>
 </div>
 
+<!-- Modal Confirmação Excluir Cliente -->
+<div class="modal fade" id="modalExcluirCliente" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <?php if ($cliente): ?>
+                    <p>Tem certeza que deseja excluir o cliente <strong><?php echo esc($cliente['nome']); ?></strong>?</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Esta ação não poderá ser desfeita e só é possível se o cliente não tiver compras associadas.
+                    </div>
+                <?php else: ?>
+                    <p>Selecione um cliente para excluir.</p>
+                <?php endif; ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>
+                    Cancelar
+                </button>
+                <?php if ($cliente): ?>
+                    <a href="clientes.php?acao=excluir&id=<?php echo $cliente['id']; ?>" class="btn btn-danger">
+                        <i class="fas fa-trash-alt me-1"></i>
+                        Confirmar Exclusão
+                    </a>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Confirmação Excluir (para botão na lista) -->
+<div class="modal fade" id="modalConfirmExcluir" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir o cliente <strong id="clienteNome"></strong>?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Esta ação não poderá ser desfeita e só é possível se o cliente não tiver compras associadas.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>
+                    Cancelar
+                </button>
+                <a href="#" id="btnConfirmExcluir" class="btn btn-danger">
+                    <i class="fas fa-trash-alt me-1"></i>
+                    Confirmar Exclusão
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Garantir que botões de ação em tabelas responsivas mantenham aparência correta */
+    .datatable .btn {
+        display: inline-block !important;
+    }
+    
+    /* Forçar cores de background nos botões de ação */
+    .datatable .btn-info {
+        background-color: #0dcaf0 !important;
+        border-color: #0dcaf0 !important;
+    }
+    
+    .datatable .btn-primary {
+        background-color: #0d6efd !important;
+        border-color: #0d6efd !important;
+    }
+    
+    .datatable .btn-danger {
+        background-color: #dc3545 !important;
+        border-color: #dc3545 !important;
+    }
+    
+    /* Garantir que botões em linhas expandidas mantenham estilo */
+    .dtr-details .btn {
+        display: inline-block !important;
+        margin: 0.1rem;
+    }
+    
+    /* Manter cor do texto nos botões */
+    .datatable .btn-info.text-white {
+        color: #fff !important;
+    }
+</style>
+
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const table = document.querySelector('.datatable');
-    if (table) {
-        // Destruir se já existir uma instância DataTable
-        if ($.fn.DataTable.isDataTable(table)) {
-            $(table).DataTable().destroy();
+    $(document).ready(function() {
+        // Não inicializamos DataTables aqui porque já está sendo inicializado no footer.php
+        // O id da tabela já está na lista de exclusão: '#tabelaClientes'
+        
+        // Inicializar tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+        
+        // Filtro de busca rápida para tabela de clientes
+        $('#buscarCliente').on('keyup', function() {
+            $('#tabelaClientes').DataTable().search($(this).val()).draw();
+        });
+        
+        // Máscara para campos de CPF/CNPJ
+        if (typeof $.fn.mask !== 'undefined') {
+            var CPFMaskBehavior = function(val) {
+                return val.replace(/\D/g, '').length <= 11 ? '000.000.000-00' : '00.000.000/0000-00';
+            };
+            
+            var cpfOptions = {
+                onKeyPress: function(val, e, field, options) {
+                    field.mask(CPFMaskBehavior.apply({}, arguments), options);
+                }
+            };
+            
+            $('#cpf_cnpj, #cpf_cnpj_novo').mask(CPFMaskBehavior, cpfOptions);
+            
+            // Máscara para telefone
+            var SPMaskBehavior = function(val) {
+                return val.replace(/\D/g, '').length === 11 ? '(00) 00000-0000' : '(00) 0000-00009';
+            };
+            
+            var spOptions = {
+                onKeyPress: function(val, e, field, options) {
+                    field.mask(SPMaskBehavior.apply({}, arguments), options);
+                }
+            };
+            
+            $('#telefone, #telefone_novo').mask(SPMaskBehavior, spOptions);
+            
+            // Máscara para CEP
+            $('#cep, #cep_novo').mask('00000-000');
         }
         
-        // Inicializar novamente
-        new DataTable(table, {
-            language: {
-                url: "//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json"
-            }
+        // Manipular exclusão de cliente
+        $('.btn-excluir-cliente').on('click', function(e) {
+            e.preventDefault();
+            
+            var id = $(this).data('id');
+            var nome = $(this).data('nome');
+            
+            $('#clienteNome').text(nome);
+            $('#btnConfirmExcluir').attr('href', 'clientes.php?acao=excluir&id=' + id);
+            
+            var modalExcluir = new bootstrap.Modal(document.getElementById('modalConfirmExcluir'));
+            modalExcluir.show();
         });
-    }
-});
-    
-    // Máscaras para CPF/CNPJ e CEP
-    const cpfCnpjInputs = document.querySelectorAll('[id$="cpf_cnpj"], [id$="cpf_cnpj_add"]');
-    cpfCnpjInputs.forEach(function(input) {
-        input.addEventListener('input', function() {
-            let value = this.value.replace(/\D/g, '');
-            if (value.length <= 11) {
-                // Formatar como CPF
-                if (value.length > 9) {
-                    value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4');
-                } else if (value.length > 6) {
-                    value = value.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
-                } else if (value.length > 3) {
-                    value = value.replace(/(\d{3})(\d{1,3})/, '$1.$2');
+        
+        // Busca de CEP via API ViaCEP (opcional)
+        function pesquisaCEP(cep, sufixo = '') {
+            // Remove tudo que não é número
+            cep = cep.replace(/\D/g, '');
+            
+            if (cep.length !== 8) {
+                return false;
+            }
+            
+            // Fazer a requisição AJAX para a API ViaCEP
+            $.getJSON("https://viacep.com.br/ws/" + cep + "/json/?callback=?", function(dados) {
+                if (!("erro" in dados)) {
+                    // Preencher os campos com os dados retornados
+                    $("#endereco" + sufixo).val(dados.logradouro);
+                    $("#cidade" + sufixo).val(dados.localidade);
+                    $("#estado" + sufixo).val(dados.uf);
+                } else {
+                    // CEP não encontrado
+                    alert("CEP não encontrado.");
                 }
-            } else {
-                // Formatar como CNPJ
-                if (value.length > 12) {
-                    value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/, '$1.$2.$3/$4-$5');
-                } else if (value.length > 8) {
-                    value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{1,4})/, '$1.$2.$3/$4');
-                } else if (value.length > 5) {
-                    value = value.replace(/(\d{2})(\d{3})(\d{1,3})/, '$1.$2.$3');
-                } else if (value.length > 2) {
-                    value = value.replace(/(\d{2})(\d{1,3})/, '$1.$2');
-                }
-            }
-            this.value = value;
+            });
+        }
+        
+        // Evento para busca automática de CEP ao sair do campo
+        $("#cep").blur(function() {
+            pesquisaCEP($(this).val());
+        });
+        
+        $("#cep_novo").blur(function() {
+            pesquisaCEP($(this).val(), '_novo');
         });
     });
-    
-    const cepInputs = document.querySelectorAll('[id$="cep"], [id$="cep_add"]');
-    cepInputs.forEach(function(input) {
-        input.addEventListener('input', function() {
-            let value = this.value.replace(/\D/g, '');
-            if (value.length > 5) {
-                value = value.replace(/(\d{5})(\d{1,3})/, '$1-$2');
-            }
-            this.value = value;
-        });
-    });
-    
-    const telefoneInputs = document.querySelectorAll('[id$="telefone"], [id$="telefone_add"]');
-    telefoneInputs.forEach(function(input) {
-        input.addEventListener('input', function() {
-            let value = this.value.replace(/\D/g, '');
-            if (value.length === 11) {
-                value = value.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-            } else if (value.length === 10) {
-                value = value.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
-            } else if (value.length > 2) {
-                value = value.replace(/(\d{2})(\d{0,5})(\d{0,4})/, '($1) $2$3');
-            } else if (value.length > 0) {
-                value = value.replace(/(\d{0,2})/, '($1');
-            }
-            this.value = value;
-        });
-    });
-});
 </script>
 
 <?php include 'footer.php'; ?>

@@ -2012,19 +2012,21 @@ public function adicionar($dados) {
             // Log para debug
             error_log("Venda inserida com ID: " . $venda_id);
             
-            // Insere os itens da venda
-            foreach ($dados['itens'] as $item) {
-                // Verifica estoque
-                if (!$this->produto->verificarEstoque($item['produto_id'], $item['quantidade'])) {
-                    throw new Exception("Estoque insuficiente para o produto ID: " . $item['produto_id']);
-                }
+// Insere os itens da venda
+foreach ($dados['itens'] as $item) {
+    // Verifica estoque apenas se não for uma venda gerada de comanda
+    if (!isset($dados['nao_atualizar_estoque']) || !$dados['nao_atualizar_estoque']) {
+        if (!$this->produto->verificarEstoque($item['produto_id'], $item['quantidade'])) {
+            throw new Exception("Estoque insuficiente para o produto ID: " . $item['produto_id']);
+        }
+    }
                 
-                $stmt = $this->pdo->prepare("
-                    INSERT INTO itens_venda 
-                    (venda_id, produto_id, quantidade, preco_unitario, subtotal) 
-                    VALUES 
-                    (:venda_id, :produto_id, :quantidade, :preco_unitario, :subtotal)
-                ");
+    $stmt = $this->pdo->prepare("
+        INSERT INTO itens_venda 
+        (venda_id, produto_id, quantidade, preco_unitario, subtotal) 
+        VALUES 
+        (:venda_id, :produto_id, :quantidade, :preco_unitario, :subtotal)
+    ");
                 
                 $produto_id = $item['produto_id'];
                 $quantidade = $item['quantidade'];
@@ -2039,17 +2041,18 @@ public function adicionar($dados) {
                 
                 $stmt->execute();
                 
-                // Registra movimentação de estoque
-                $this->produto->registrarMovimentacao([
-                    'produto_id' => $produto_id,
-                    'tipo' => 'saida',
-                    'quantidade' => $quantidade,
-                    'observacao' => 'Venda #' . $venda_id,
-                    'origem' => 'venda',
-                    'documento_id' => $venda_id
-                ]);
+    // Registra movimentação de estoque apenas se não foi solicitado para ignorar
+    if (!isset($dados['nao_atualizar_estoque']) || !$dados['nao_atualizar_estoque']) {
+        $this->produto->registrarMovimentacao([
+            'produto_id' => $produto_id,
+            'tipo' => 'saida',
+            'quantidade' => $quantidade,
+            'observacao' => 'Venda #' . $venda_id,
+            'origem' => 'venda',
+            'documento_id' => $venda_id
+        ]);
             }
-            
+        }
             // Finaliza transação
             //$this->pdo->commit();
             // Só faz commit se foi a função quem iniciou a transação
@@ -2759,21 +2762,22 @@ public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoe
         $stmt->bindParam(':id', $comanda_id, PDO::PARAM_INT);
         $stmt->execute();
         
-        // Cria uma venda a partir da comanda
-        $venda = new Venda($this->pdo);
-        
-        $valor_total = $comanda['valor_total'] - $desconto;
-        
-        $dados_venda = [
-            'cliente_id' => $comanda['cliente_id'],
-            'valor_total' => $valor_total,
-            'desconto' => $desconto,
-            'forma_pagamento' => $forma_pagamento,
-            'status' => 'finalizada',
-            'observacoes' => 'Venda gerada a partir da comanda #' . $comanda_id . 
-                             ($observacoes ? "\n" . $observacoes : ''),
-            'itens' => []
-        ];
+// Cria uma venda a partir da comanda
+$venda = new Venda($this->pdo);
+
+$valor_total = $comanda['valor_total'] - $desconto;
+
+$dados_venda = [
+    'cliente_id' => $comanda['cliente_id'],
+    'valor_total' => $valor_total,
+    'desconto' => $desconto,
+    'forma_pagamento' => $forma_pagamento,
+    'status' => 'finalizada',
+    'observacoes' => 'Venda gerada a partir da comanda #' . $comanda_id . 
+                    ($observacoes ? "\n" . $observacoes : ''),
+    'itens' => [],
+    'nao_atualizar_estoque' => true  // Adicionar esta linha!
+];
         
         // Prepara os itens para a venda
         foreach ($itens as $item) {

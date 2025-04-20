@@ -27,7 +27,7 @@
     $(document).ready(function() {
         // Inicializar DataTables com responsividade
         //$('.datatable').DataTable({
-          $('.datatable').not('#tabelaProdutos,#tabelahistorico,#tabelaComandas,#tabelaProdutosComanda,#tabelaMovimentacoes,#tabela-busca-produtos').DataTable({
+          $('.datatable').not('#tabelaProdutos,#tabela-produtos-vendidos,#tabelahistorico,#tabelaComandas,#tabelaProdutosComanda,#tabelaMovimentacoes,#tabela-busca-produtos,#tabelaCategorias,#tabelaEstoqueBaixo,#tabelaProdutos,#tabelaMovimentacoes,#tabela-estoque-atual,#tabela-lucratividade').DataTable({
             "language": {
                 "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json"
             },

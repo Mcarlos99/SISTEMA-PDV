@@ -11,6 +11,8 @@ if (!isset($_SESSION['usuario_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $titulo_pagina ?? 'Sistema PDV'; ?></title>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- jQuery Mask Plugin -->
    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script> -->
     <!-- jQuery -->
@@ -432,8 +434,8 @@ if (!isset($_SESSION['usuario_id'])) {
         
 .modal-dialog {
     margin: 1.75rem auto;
-    max-width: 500px; /* Largura padrão */
-    width: 800px !important; /* Impede largura total */
+    width: auto !important;
+    max-width: 90%;
 }
 .modal-dialog.modal-lg {
     max-width: 800px;
@@ -445,17 +447,25 @@ if (!isset($_SESSION['usuario_id'])) {
     border-radius: 10px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     border: none;
+    max-width: 100%;
+    overflow-x: hidden
 }
+/* Control form element widths */
+.modal-body .form-control, 
+.modal-body .form-select, 
+.modal-body .input-group {
+    max-width: 100%;
+}
+/* Add more padding for better visual spacing */
 .modal-body {
-    max-width: 100%;
-    overflow-x: hidden;
+    padding: 1.5rem;
 }
-/* Garante que elementos de formulário dentro de modais não forcem a largura */
-.modal-body .form-control,
-.modal-body .form-select {
+/* Ensure table doesn't force width beyond container */
+.modal-body .table-responsive {
+    overflow-x: auto;
     width: 100%;
-    max-width: 100%;
 }
+
         
         @media (max-width: 576px) {
              .modal-dialog {
@@ -470,7 +480,7 @@ if (!isset($_SESSION['usuario_id'])) {
         
         /* Garante que formulários não extrapolem */
         .form-control, .form-select {
-            max-width: 100%;
+            max-width: 70%;
         }
     </style>
 </head>
