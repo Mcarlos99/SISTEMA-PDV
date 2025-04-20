@@ -556,6 +556,9 @@ if (!isset($_SESSION['usuario_id'])) {
         color: var(--dark-color);
     }
 }
+.tooltip {
+    z-index: 9999 !important;
+}
     </style>
 </head>
 <body>

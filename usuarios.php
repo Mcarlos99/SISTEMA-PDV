@@ -224,16 +224,26 @@ include 'header.php';
                                 <td><?php echo $u['criado_em']; ?></td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="?editar=<?php echo $u['id']; ?>" class="btn btn-primary" data-bs-toggle="tooltip" title="Editar">
-                                            <i class="fas fa-edit"></i>
-                                        </a>
+                                    <a href="?editar=<?php echo $u['id']; ?>" 
+                                    class="btn btn-primary">
+                                    
+                                    
+                                    <i class="fas fa-edit"></i>
+                                    </a>
+        
+                                    <a href="ver_perfil.php?id=<?php echo $u['id']; ?>" 
+                                    class="btn btn-info text-white"> 
+
+
+                                    <i class="fas fa-user-circle"></i>
+                                    </a>
                                         
                                         <?php if ($_SESSION['usuario_id'] != $u['id']): ?>
                                             <button type="button" class="btn btn-danger btn-excluir" 
                                                 data-id="<?php echo $u['id']; ?>" 
-                                                data-nome="<?php echo esc($u['nome']); ?>"
-                                                data-bs-toggle="tooltip" 
-                                                title="Excluir">
+                                                data-nome="<?php echo esc($u['nome']); ?>">
+
+                                                
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
                                         <?php endif; ?>
@@ -428,14 +438,12 @@ include 'header.php';
             }
         });
         
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-    return new bootstrap.Tooltip(tooltipTriggerEl, {
-        trigger: 'hover',
-        placement: 'top',        // Ou 'bottom', 'right', 'left'
-        container: 'body'        // Renderiza o tooltip fora de divs problemáticas
-    });
-});
+         // Inicializar tooltips
+         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+             return new bootstrap.Tooltip(tooltipTriggerEl)
+         });
+
     });
 </script>
 

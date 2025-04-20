@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Configurações do banco de dados
 $config = [
     'db_host' => 'localhost',

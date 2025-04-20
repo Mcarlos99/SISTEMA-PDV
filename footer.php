@@ -57,14 +57,11 @@
             $('.alert').fadeOut('slow');
         }, 5000);
         
+        // Inicializar tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-    return new bootstrap.Tooltip(tooltipTriggerEl, {
-        trigger: 'hover',
-        placement: 'top',        // Ou 'bottom', 'right', 'left'
-        container: 'body'        // Renderiza o tooltip fora de divs problemáticas
-    });
-});
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
         
         // Corrige problemas de largura em inputs e campos de formulário
         $('input, select, textarea').on('focus', function() {

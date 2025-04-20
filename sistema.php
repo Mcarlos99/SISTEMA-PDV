@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /*
  * Sistema PDV (Ponto de Venda)
  * 
@@ -556,26 +556,15 @@ class ConfiguracaoSistema {
                 WHERE id = :id
             ");
             
-            // Converter checkbox para booleano
-            $estoque_negativo = isset($dados['estoque_negativo']) ? 1 : 0;
-            $alerta_estoque = isset($dados['alerta_estoque']) ? 1 : 0;
-            $impressao_automatica = isset($dados['impressao_automatica']) ? 1 : 0;
-            $caixa_obrigatorio = isset($dados['caixa_obrigatorio']) ? 1 : 0;
-            $id = $dados['id'];
-            $itens_por_pagina = $dados['itens_por_pagina'];
-            $tema = $dados['tema'];
-            $moeda = $dados['moeda'];
-            $formato_data = $dados['formato_data'];
-
-            $stmt->bindParam(':id', $id, PDO::PARAM_INT);
-            $stmt->bindParam(':itens_por_pagina', $itens_por_pagina, PDO::PARAM_INT);
-            $stmt->bindParam(':tema', $tema);
-            $stmt->bindParam(':moeda', $moeda);
-            $stmt->bindParam(':formato_data', $formato_data);
-            $stmt->bindParam(':estoque_negativo', $estoque_negativo, PDO::PARAM_INT);
-            $stmt->bindParam(':alerta_estoque', $alerta_estoque, PDO::PARAM_INT);
-            $stmt->bindParam(':impressao_automatica', $impressao_automatica, PDO::PARAM_INT);
-            $stmt->bindParam(':caixa_obrigatorio', $caixa_obrigatorio, PDO::PARAM_INT);
+            $stmt->bindParam(':id', $dados['id'], PDO::PARAM_INT);
+            $stmt->bindParam(':itens_por_pagina', $dados['itens_por_pagina'], PDO::PARAM_INT);
+            $stmt->bindParam(':tema', $dados['tema']);
+            $stmt->bindParam(':moeda', $dados['moeda']);
+            $stmt->bindParam(':formato_data', $dados['formato_data']);
+            $stmt->bindParam(':estoque_negativo', $dados['estoque_negativo'], PDO::PARAM_INT);
+            $stmt->bindParam(':alerta_estoque', $dados['alerta_estoque'], PDO::PARAM_INT);
+            $stmt->bindParam(':impressao_automatica', $dados['impressao_automatica'], PDO::PARAM_INT);
+            $stmt->bindParam(':caixa_obrigatorio', $dados['caixa_obrigatorio'], PDO::PARAM_INT);
             
             $result = $stmt->execute();
             
