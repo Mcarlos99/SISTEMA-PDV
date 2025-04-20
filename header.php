@@ -515,6 +515,47 @@ if (!isset($_SESSION['usuario_id'])) {
         .form-control, .form-select {
             max-width: 70%;
         }
+
+/* Garantir que o menu colapsado apareça por trás do topo */
+@media (max-width: 991.98px) {
+    .navbar {
+        z-index: 1030;
+    }
+    
+    .navbar-collapse {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        width: 100%;
+        border-radius: 0 0 10px 10px;
+        padding: 10px;
+        box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+        z-index: 1020;
+    }
+    
+    /* Melhora a visibilidade dos itens dentro do menu colapsado */
+    .navbar-collapse .nav-link {
+        color: white !important;
+        padding: 10px 15px;
+        border-radius: 5px;
+    }
+    
+    .navbar-collapse .nav-link:hover {
+        background-color: var(--secondary-color);
+    }
+    
+    /* Ajusta o dropdown do perfil no menu colapsado */
+    .navbar-collapse .dropdown-menu {
+        background-color: white;
+        margin-top: 5px;
+    }
+    
+    .navbar-collapse .dropdown-menu .dropdown-item {
+        color: var(--dark-color);
+    }
+}
     </style>
 </head>
 <body>
