@@ -24,7 +24,7 @@ include 'header.php';
                         </div>
                     </div>
                     <div class="text-center text-md-start">
-                        <h2 class="card-title mb-1 fs-3">Bem-vindo(a) ao Sistema PDV</h2>
+                        <h2 class="card-title mb-1 fs-3">Bem-vindo(a) ao EXTREME PDV</h2>
                         <p class="text-muted mb-0">Olá, <?php echo $_SESSION['usuario_nome']; ?>! Acompanhe suas vendas e controle seu estoque facilmente.</p>
                     </div>
                 </div>

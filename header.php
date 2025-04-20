@@ -91,6 +91,40 @@ if (!isset($_SESSION['usuario_id'])) {
             margin-right: 8px;
             font-weight: 600;
         }
+/* Adicione estes estilos ao seu bloco de estilos existente */
+.navbar-brand-container {
+    background-color: white;
+    border-radius: 6px;
+    padding: 5px 15px;
+    margin-right: 15px;
+    display: flex;
+    align-items: center;
+}
+
+.navbar-brand-container .navbar-brand {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+}
+
+.logo-text {
+    display: inline-block;
+    margin-left: 10px;
+}
+
+@media (max-width: 576px) {
+    .navbar-brand-container {
+        padding: 3px 10px;
+    }
+    
+    .logo-text {
+        font-size: 0.9rem;
+    }
+}
+/*  */
         
         .sidebar {
             position: fixed;
@@ -571,10 +605,13 @@ if (!isset($_SESSION['usuario_id'])) {
             <button class="btn btn-link text-white sidebar-toggle me-2 d-none d-lg-block" id="sidebarCollapseBtn" type="button">
                 <i class="fas fa-bars"></i>
             </button>
+            <div class="navbar-brand-container">
             <a class="navbar-brand" href="index.php">
-                <img src="logo/logo2.png" alt="Logo Extreme PDV" style="height: 40px; margin-right: 10px;">
-                EXTREME PDV
+                <img src="logo/logo2.png" alt="Logo Sistema PDV" height="30">
+                <span class="logo-text">EXTREME PDV</span>
             </a>
+            </div>
+            
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
