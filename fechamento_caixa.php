@@ -2,15 +2,21 @@
 require_once 'config.php';
 verificarLogin();
 
-// Verificar se há dados de fechamento na sessão
-if (!isset($_SESSION['fechamento_caixa'])) {
+// Verificar se há dados de fechamento na sessão OU se foi solicitada uma reimpressão por ID
+$fechamento_ativo = isset($_SESSION['fechamento_caixa']);
+$reimpressao = false;
+
+if (isset($_GET['id']) && !empty($_GET['id'])) {
+    $caixa_id = intval($_GET['id']);
+    $reimpressao = true;
+} elseif ($fechamento_ativo) {
+    $fechamento = $_SESSION['fechamento_caixa'];
+    $caixa_id = $fechamento['caixa_id'];
+} else {
     alerta('Nenhum fechamento de caixa em andamento!', 'warning');
     header('Location: caixa.php');
     exit;
 }
-
-$fechamento = $_SESSION['fechamento_caixa'];
-$caixa_id = $fechamento['caixa_id'];
 
 // Inicializar a classe Caixa
 $caixa = new Caixa($pdo);
@@ -18,8 +24,30 @@ $caixa = new Caixa($pdo);
 // Buscar informações detalhadas do caixa
 try {
     $caixa_info = $caixa->buscarPorId($caixa_id);
+    
+    // Verificar se o caixa existe e está fechado para reimpressão
+    if ($reimpressao && (!$caixa_info || $caixa_info['status'] != 'fechado')) {
+        alerta('Caixa não encontrado ou não está fechado!', 'warning');
+        header('Location: caixa.php');
+        exit;
+    }
+    
     $movimentacoes = $caixa->listarMovimentacoes($caixa_id);
     $resumo_pagamentos = $caixa->resumoVendasPorFormaPagamento($caixa_id);
+    
+    // Se for uma reimpressão, construa o array de fechamento com os dados do caixa
+    if ($reimpressao) {
+        $fechamento = [
+            'caixa_id' => $caixa_id,
+            'valor_inicial' => $caixa_info['valor_inicial'],
+            'valor_final' => $caixa_info['valor_final'],
+            'valor_vendas' => $caixa_info['valor_vendas'],
+            'valor_sangrias' => $caixa_info['valor_sangrias'],
+            'valor_suprimentos' => $caixa_info['valor_suprimentos'],
+            'valor_esperado' => $caixa_info['valor_inicial'] + $caixa_info['valor_vendas'] + $caixa_info['valor_suprimentos'] - $caixa_info['valor_sangrias'],
+            'diferenca' => $caixa_info['valor_final'] - ($caixa_info['valor_inicial'] + $caixa_info['valor_vendas'] + $caixa_info['valor_suprimentos'] - $caixa_info['valor_sangrias'])
+        ];
+    }
 } catch (Exception $e) {
     alerta('Erro ao buscar informações do caixa: ' . $e->getMessage(), 'danger');
     header('Location: caixa.php');
@@ -27,13 +55,13 @@ try {
 }
 
 // Template da página
-$titulo_pagina = 'Fechamento de Caixa';
+$titulo_pagina = $reimpressao ? 'Reimpressão de Fechamento de Caixa #' . $caixa_id : 'Fechamento de Caixa';
 include 'header.php';
 ?>
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3">Fechamento de Caixa #<?php echo $caixa_id; ?></h1>
+        <h1 class="h3"><?php echo $reimpressao ? 'Reimpressão de Fechamento - Caixa #' . $caixa_id : 'Fechamento de Caixa #' . $caixa_id; ?></h1>
         <div>
             <button onclick="window.print();" class="btn btn-outline-primary">
                 <i class="fas fa-print me-2"></i> Imprimir
@@ -218,8 +246,14 @@ include 'header.php';
             </div>
             
             <div class="mt-4 text-center">
-                <p class="mb-1">Fechamento realizado em <?php echo date('d/m/Y H:i:s'); ?></p>
+                <p class="mb-1"><?php echo $reimpressao ? 'Reimpressão realizada em ' . date('d/m/Y H:i:s') : 'Fechamento realizado em ' . date('d/m/Y H:i:s'); ?></p>
                 <p class="small text-muted">Mauro Carlos |94| 981709809 - Sistema PDV v1.0</p>
+                <?php if ($reimpressao): ?>
+                <div class="alert alert-info mt-2">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Esta é uma reimpressão do fechamento de caixa. O documento original foi gerado em <?php echo $caixa_info['data_fechamento_formatada']; ?>.
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -251,8 +285,11 @@ include 'header.php';
 </style>
 
 <?php 
-// Limpar os dados de fechamento da sessão após exibir a página
-unset($_SESSION['fechamento_caixa']);
+// Limpar os dados de fechamento da sessão após exibir a página,
+// mas apenas se não for uma reimpressão
+if (!$reimpressao && isset($_SESSION['fechamento_caixa'])) {
+    unset($_SESSION['fechamento_caixa']);
+}
 
 include 'footer.php'; 
 ?>

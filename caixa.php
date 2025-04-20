@@ -496,11 +496,16 @@ include 'header.php';
                                             <span class="text-muted">-</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td>
+<td>
     <?php if ($h['status'] == 'fechado'): ?>
-        <a href="relatorios.php?tipo=caixa&id=<?php echo $h['id']; ?>" class="btn btn-sm btn-info text-white" style="display: inline-block !important; background-color: #0dcaf0 !important;" data-bs-toggle="tooltip" title="Ver Relatório">
-            <i class="fas fa-file-alt"></i>
-        </a>
+        <div class="d-flex">
+            <a href="relatorios.php?tipo=caixa&id=<?php echo $h['id']; ?>" class="btn btn-sm btn-info text-white me-1" style="display: inline-block !important;" data-bs-toggle="tooltip" title="Ver Relatório">
+                <i class="fas fa-file-alt"></i>
+            </a>
+            <a href="fechamento_caixa.php?id=<?php echo $h['id']; ?>" class="btn btn-sm btn-primary" style="display: inline-block !important;" data-bs-toggle="tooltip" title="Reimprimir Fechamento">
+                <i class="fas fa-print"></i>
+            </a>
+        </div>
     <?php else: ?>
         <button class="btn btn-sm btn-secondary" style="display: inline-block !important;" disabled>
             <i class="fas fa-file-alt"></i>
