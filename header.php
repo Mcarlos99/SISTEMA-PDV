@@ -157,6 +157,39 @@ if (!isset($_SESSION['usuario_id'])) {
             overflow-x: hidden; /* Previne rolagem horizontal */
         }
         
+
+        /* Estilos para os campos de data e hora relatorio */
+.input-group input[type="date"],
+.input-group input[type="time"] {
+    border-radius: 0.25rem;
+}
+
+.input-group input[type="date"] {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    flex: 2;
+}
+
+.input-group input[type="time"] {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    flex: 1;
+}
+
+@media (max-width: 768px) {
+    .input-group {
+        flex-direction: column;
+    }
+    
+    .input-group input[type="date"],
+    .input-group input[type="time"] {
+        width: 100%;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+    }
+}
+
+
         /* Card styling */
         .card {
             border: none;

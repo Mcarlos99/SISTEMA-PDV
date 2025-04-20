@@ -24,15 +24,17 @@ $produto_obj = new Produto($pdo);
 // Definir parâmetros padrão para filtros
 $data_inicio = isset($_GET['data_inicio']) ? $_GET['data_inicio'] : date('Y-m-d', strtotime('-30 days'));
 $data_fim = isset($_GET['data_fim']) ? $_GET['data_fim'] : date('Y-m-d');
+$hora_inicio = isset($_GET['hora_inicio']) ? $_GET['hora_inicio'] : '00:00';
+$hora_fim = isset($_GET['hora_fim']) ? $_GET['hora_fim'] : '23:59';
 $tipo_relatorio = isset($_GET['tipo']) ? $_GET['tipo'] : 'vendas_periodo';
 
 // Processar solicitação de download do relatório em CSV
 if (isset($_GET['download']) && $_GET['download'] == 'csv') {
     $tipo = $_GET['tipo'];
     
-    // Formatar datas para consulta
-    $datetime_inicio = date('Y-m-d 00:00:00', strtotime($data_inicio));
-    $datetime_fim = date('Y-m-d 23:59:59', strtotime($data_fim));
+// Formatar datas para consulta
+$datetime_inicio = date('Y-m-d H:i:s', strtotime($data_inicio . ' ' . $hora_inicio));
+$datetime_fim = date('Y-m-d H:i:s', strtotime($data_fim . ' ' . $hora_fim));
     
     // Nome do arquivo CSV
     $filename = 'relatorio_' . $tipo . '_' . date('Y-m-d') . '.csv';
@@ -169,14 +171,20 @@ include 'header.php';
                 </div>
                 
                 <div class="col-md-3">
-                    <label for="data_inicio" class="form-label fw-bold">Data Inicial:</label>
-                    <input type="date" class="form-control" id="data_inicio" name="data_inicio" value="<?php echo $data_inicio; ?>">
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="data_fim" class="form-label fw-bold">Data Final:</label>
-                    <input type="date" class="form-control" id="data_fim" name="data_fim" value="<?php echo $data_fim; ?>">
-                </div>
+    <label for="data_inicio" class="form-label fw-bold">Data Inicial:</label>
+    <div class="input-group">
+        <input type="date" class="form-control" id="data_inicio" name="data_inicio" value="<?php echo $data_inicio; ?>">
+        <input type="time" class="form-control" id="hora_inicio" name="hora_inicio" value="<?php echo $hora_inicio ?? '00:00'; ?>">
+    </div>
+</div>
+
+<div class="col-md-3">
+    <label for="data_fim" class="form-label fw-bold">Data Final:</label>
+    <div class="input-group">
+        <input type="date" class="form-control" id="data_fim" name="data_fim" value="<?php echo $data_fim; ?>">
+        <input type="time" class="form-control" id="hora_fim" name="hora_fim" value="<?php echo $hora_fim ?? '23:59'; ?>">
+    </div>
+</div>
                 
                 <div class="col-md-2 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary w-100">
@@ -206,10 +214,10 @@ include 'header.php';
                     echo $tipos_relatorio[$tipo_relatorio] ?? 'Relatório';
                     ?>
                 </h5>
-                <a href="relatorios.php?tipo=<?php echo $tipo_relatorio; ?>&data_inicio=<?php echo $data_inicio; ?>&data_fim=<?php echo $data_fim; ?>&download=csv" class="btn btn-sm btn-light">
-                    <i class="fas fa-download me-1"></i>
-                    Exportar CSV
-                </a>
+                <a href="relatorios.php?tipo=<?php echo $tipo_relatorio; ?>&data_inicio=<?php echo $data_inicio; ?>&data_fim=<?php echo $data_fim; ?>&hora_inicio=<?php echo $hora_inicio; ?>&hora_fim=<?php echo $hora_fim; ?>&download=csv" class="btn btn-sm btn-light">
+    <i class="fas fa-download me-1"></i>
+    Exportar CSV
+</a>
             </div>
         </div>
         <div class="card-body">
@@ -284,7 +292,8 @@ include 'header.php';
                     
 // Gráfico de vendas
 echo '<div class="mb-4">';
-echo '<h5>Gráfico de Vendas Diárias - ' . ucfirst($fmt->format(new DateTime($data_inicio))) . '</h5>';
+//echo '<h5>Gráfico de Vendas Diárias - ' . ucfirst($fmt->format(new DateTime($data_inicio))) . '</h5>';
+echo '<h5>Gráfico de Vendas Diárias - ' . date('d/m/Y H:i', strtotime($data_inicio . ' ' . $hora_inicio)) . ' até ' . date('d/m/Y H:i', strtotime($data_fim . ' ' . $hora_fim)) . '</h5>';
 echo '<canvas id="vendasChart" width="400" height="200"></canvas>';
 echo '</div>';
                     
@@ -827,32 +836,36 @@ echo '</div>';
             });
         }
         
-        // Atualizar campos de data quando o tipo de relatório mudar
-        $('#tipo').change(function() {
-            var tipo = $(this).val();
-            
-            // Se for relatório de estoque atual, desabilitar datas
-            if (tipo === 'estoque_atual') {
-                $('#data_inicio, #data_fim').prop('disabled', true);
-            } else {
-                $('#data_inicio, #data_fim').prop('disabled', false);
-            }
-            
-            // Ajustar período para vendas por período
-            if (tipo === 'vendas_periodo') {
-                // Definir para o primeiro dia do mês atual
-                var dataInicio = new Date();
-                dataInicio.setDate(1);
-                
-                // Definir para o último dia do mês atual
-                var dataFim = new Date();
-                var ultimoDia = new Date(dataFim.getFullYear(), dataFim.getMonth() + 1, 0).getDate();
-                dataFim.setDate(ultimoDia);
-                
-                $('#data_inicio').val(formatarData(dataInicio));
-                $('#data_fim').val(formatarData(dataFim));
-            }
-        });
+// Atualizar campos de data quando o tipo de relatório mudar
+$('#tipo').change(function() {
+    var tipo = $(this).val();
+    
+    // Se for relatório de estoque atual, desabilitar datas
+    if (tipo === 'estoque_atual') {
+        $('#data_inicio, #data_fim, #hora_inicio, #hora_fim').prop('disabled', true);
+    } else {
+        $('#data_inicio, #data_fim, #hora_inicio, #hora_fim').prop('disabled', false);
+    }
+    
+    // Ajustar período para vendas por período
+    if (tipo === 'vendas_periodo') {
+        // Definir para o primeiro dia do mês atual às 00:00
+        var dataInicio = new Date();
+        dataInicio.setDate(1);
+        dataInicio.setHours(0, 0, 0, 0);
+        
+        // Definir para o último dia do mês atual às 23:59
+        var dataFim = new Date();
+        var ultimoDia = new Date(dataFim.getFullYear(), dataFim.getMonth() + 1, 0).getDate();
+        dataFim.setDate(ultimoDia);
+        dataFim.setHours(23, 59, 0, 0);
+        
+        $('#data_inicio').val(formatarData(dataInicio));
+        $('#data_fim').val(formatarData(dataFim));
+        $('#hora_inicio').val('00:00');
+        $('#hora_fim').val('23:59');
+    }
+});
         
         // Função para formatar data no padrão YYYY-MM-DD
         function formatarData(data) {
