@@ -27,7 +27,7 @@
     $(document).ready(function() {
         // Inicializar DataTables com responsividade
         //$('.datatable').DataTable({
-          $('.datatable').not('#tabelaProdutos,#tabela-produtos-vendidos,#tabelahistorico,#tabelaComandas,#tabelaProdutosComanda,#tabelaMovimentacoes,#tabela-busca-produtos,#tabelaCategorias,#tabelaEstoqueBaixo,#tabelaProdutos,#tabelaMovimentacoes,#tabela-estoque-atual,#tabela-lucratividade').DataTable({
+          $('.datatable').not('#tabelaProdutos,#tabelaUsuarios,#tabela-produtos-vendidos,#tabelahistorico,#tabelaComandas,#tabelaProdutosComanda,#tabelaMovimentacoes,#tabela-busca-produtos,#tabelaCategorias,#tabelaEstoqueBaixo,#tabelaProdutos,#tabelaMovimentacoes,#tabela-estoque-atual,#tabela-lucratividade').DataTable({
             "language": {
                 "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json"
             },
@@ -57,13 +57,14 @@
             $('.alert').fadeOut('slow');
         }, 5000);
         
-        // Inicializar tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl, {
-                trigger: 'hover' // Evita problemas em dispositivos touch
-            });
-        });
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl, {
+        trigger: 'hover',
+        placement: 'top',        // Ou 'bottom', 'right', 'left'
+        container: 'body'        // Renderiza o tooltip fora de divs problemáticas
+    });
+});
         
         // Corrige problemas de largura em inputs e campos de formulário
         $('input, select, textarea').on('focus', function() {

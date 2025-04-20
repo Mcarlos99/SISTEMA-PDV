@@ -664,8 +664,6 @@ include 'header.php';
         // Os ids das tabelas já estão na lista de exclusão: '#tabelaProdutos,#tabelaEstoqueBaixo,#tabelaMovimentacoes'
         
         // Inicializar tooltips
-        
-        // Inicializar tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
             return new bootstrap.Tooltip(tooltipTriggerEl)

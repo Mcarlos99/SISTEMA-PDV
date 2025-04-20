@@ -569,8 +569,8 @@ if (!isset($_SESSION['usuario_id'])) {
                 <i class="fas fa-bars"></i>
             </button>
             <a class="navbar-brand" href="index.php">
-                <i class="fas fa-cash-register me-2"></i>
-                Sistema PDV
+                <img src="logo/logo2.png" alt="Logo Extreme PDV" style="height: 40px; margin-right: 10px;">
+                EXTREME PDV
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
