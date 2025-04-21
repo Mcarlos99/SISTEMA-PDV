@@ -591,7 +591,7 @@ include 'header.php';
             <form action="comandas.php?acao=fechar" method="post">
                 <input type="hidden" name="comanda_id" value="<?php echo $comanda['id']; ?>">
                 <div class="modal-body">
-                    <div class="alert alert-info mb-4">
+                    <div class="mb-4">
                         <h6 class="mb-2">Resumo da Comanda</h6>
                         <p class="mb-1">Cliente: <strong><?php echo esc($comanda['cliente_nome']); ?></strong></p>
                         <p class="mb-1">Total de itens: <strong><?php echo count($produtos_comanda); ?></strong></p>
@@ -645,7 +645,7 @@ include 'header.php';
                         <textarea class="form-control" id="observacoes" name="observacoes" rows="2"></textarea>
                     </div>
                     
-                    <div class="alert alert-success mb-0">
+                    <div class="mb-0">
                         <div class="d-flex align-items-center">
                             <div class="flex-shrink-0">
                                 <i class="fas fa-receipt fa-2x me-2"></i>
