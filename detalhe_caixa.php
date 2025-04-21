@@ -293,7 +293,7 @@ include 'header.php';
             
             <div class="mt-4 text-center">
                 <p class="mb-1">Relatório gerado em <?php echo date('d/m/Y H:i:s'); ?></p>
-                <p class="small text-muted">Sistema PDV v1.0</p>
+                <p class="small text-muted">EXTREME PDV v1.0</p>
             </div>
         </div>
     </div>

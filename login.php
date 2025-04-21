@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Sistema PDV</title>
+    <title>Login - EXTREME PDV</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
@@ -235,7 +235,7 @@ body {
         <div class="card-header">
             <div class="text-center">
                 <img src="logo/logo.png" alt="Logo">
-<!--                 <h4 class="card-title">Sistema PDV</h4>
+<!--                 <h4 class="card-title">EXTREME PDV</h4>
                 <p class="card-subtitle">Faça login para acessar o sistema</p> -->
             </div>
         </div>
@@ -274,7 +274,7 @@ body {
         </div>
         
         <div class="copyright">
-            &copy; <?php echo date('Y'); ?> Sistema PDV - Desenvolvido por Mauro Carlos
+            &copy; <?php echo date('Y'); ?> EXTREME PDV - Desenvolvido por Mauro Carlos
         </div>
     </div>
     

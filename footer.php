@@ -10,7 +10,7 @@
                 <small>Mauro Carlos - <i class="fas fa-phone-alt me-1"></i>94 98170-9809</small>
             </div>
             <div>
-                <small>Sistema PDV v1.0 | &copy; <?php echo date('Y'); ?></small>
+                <small>EXTREME PDV v1.0 | &copy; <?php echo date('Y'); ?></small>
             </div>
         </div>
     </div>

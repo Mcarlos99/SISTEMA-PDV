@@ -10,7 +10,7 @@ if (!isset($_SESSION['usuario_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $titulo_pagina ?? 'Sistema PDV'; ?></title>
+    <title><?php echo $titulo_pagina ?? 'EXTREME PDV'; ?></title>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- jQuery Mask Plugin -->
@@ -607,7 +607,7 @@ if (!isset($_SESSION['usuario_id'])) {
             </button>
             <div class="navbar-brand-container">
             <a class="navbar-brand" href="index.php">
-                <img src="logo/logo2.png" alt="Logo Sistema PDV" height="30">
+                <img src="logo/logo2.png" alt="Logo EXTREME PDV" height="30">
                 <span class="logo-text">EXTREME PDV</span>
             </a>
             </div>
@@ -724,11 +724,28 @@ if (!isset($_SESSION['usuario_id'])) {
                     
                         <!-- Links para admin e gerente -->
                         <li class="nav-item">
-                        <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'relatorios.php' ? 'active' : ''; ?>" href="relatorios.php">
-                            <i class="fas fa-chart-bar"></i>
-                            <span>Relatórios</span>
-                        </a>
-                    </li>
+    <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'relatorios.php' ? 'active' : ''; ?>" href="#" data-bs-toggle="collapse" data-bs-target="#collapseRelatorios" aria-expanded="false" aria-controls="collapseRelatorios">
+        <i class="fas fa-chart-bar"></i>
+        <span>Relatórios</span>
+        <i class="fas fa-angle-down float-end mt-1"></i>
+    </a>
+    <div class="collapse" id="collapseRelatorios">
+        <ul class="nav flex-column sub-menu">
+            <li class="nav-item">
+                <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'relatorios.php' ? 'active' : ''; ?>" href="relatorios.php">
+                    <i class="fas fa-chart-line fa-fw me-2"></i>
+                    Relatórios Gerais
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'relatorio_pagamentos_parciais.php' ? 'active' : ''; ?>" href="relatorio_pagamentos_parciais.php">
+                    <i class="fas fa-file-invoice-dollar fa-fw me-2"></i>
+                    Pagamentos Parciais
+                </a>
+            </li>
+        </ul>
+    </div>
+</li>
                     <?php endif; ?>
                     <?php if ($_SESSION['usuario_nivel'] == 'admin'): ?>
                     <li class="nav-item">

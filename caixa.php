@@ -177,7 +177,7 @@ if ($caixa_aberto) {
 }
 
 // Template da página
-$titulo_pagina = 'Controle de Caixa - Sistema PDV';
+$titulo_pagina = 'Controle de Caixa - EXTREME PDV';
 include 'header.php';
 ?>
 

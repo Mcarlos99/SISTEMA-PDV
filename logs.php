@@ -77,7 +77,7 @@ $stmt = $pdo->query("SELECT DISTINCT acao FROM logs_sistema ORDER BY acao");
 $acoes_disponiveis = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Template da página
-$titulo_pagina = 'Logs do Sistema - Sistema PDV';
+$titulo_pagina = 'Logs do Sistema - EXTREME PDV';
 include 'header.php';
 ?>
 

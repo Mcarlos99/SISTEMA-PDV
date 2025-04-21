@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Template da página
-$titulo_pagina = 'Meu Perfil - Sistema PDV';
+$titulo_pagina = 'Meu Perfil - EXTREME PDV';
 include 'header.php';
 ?>
 <!-- PARTE 2 -->

@@ -128,7 +128,7 @@ $datetime_fim = date('Y-m-d H:i:s', strtotime($data_fim . ' ' . $hora_fim));
 }
 
 // Template da página
-$titulo_pagina = 'Relatórios - Sistema PDV';
+$titulo_pagina = 'Relatórios - EXTREME PDV';
 include 'header.php';
 ?>
 

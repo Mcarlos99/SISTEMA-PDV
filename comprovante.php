@@ -87,7 +87,7 @@ if ($venda_dados['cliente_id']) {
 </head>
 <body>
     <div class="header">
-        <p class="title">SISTEMA PDV</p>
+        <p class="title">EXTREME PDV</p>
         <p>COMPROVANTE DE VENDA</p>
     </div>
     

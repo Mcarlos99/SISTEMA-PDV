@@ -8,7 +8,7 @@ if (!isset($_SESSION['usuario_id'])) {
 }
 
 // Template da página inicial
-$titulo_pagina = 'Painel Principal - Sistema PDV';
+$titulo_pagina = 'Painel Principal - EXTREME PDV';
 include 'header.php';
 ?>
 

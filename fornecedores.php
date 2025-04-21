@@ -204,7 +204,7 @@ if (isset($_GET['id'])) {
 }
 
 // Template da página
-$titulo_pagina = 'Gerenciamento de Fornecedores - Sistema PDV';
+$titulo_pagina = 'Gerenciamento de Fornecedores - EXTREME PDV';
 include 'header.php';
 ?>
 

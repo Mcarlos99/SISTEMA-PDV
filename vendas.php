@@ -1,6 +1,6 @@
 <?php
 /**
- * Sistema PDV - Gerenciamento de Vendas
+ * EXTREME PDV - Gerenciamento de Vendas
  * 
  * Este arquivo gerencia a visualização e manipulação de vendas no sistema
  */
@@ -351,7 +351,7 @@ $formas_pagamento = [
 ];
 
 // Template da página
-$titulo_pagina = 'Gerenciamento de Vendas - Sistema PDV';
+$titulo_pagina = 'Gerenciamento de Vendas - EXTREME PDV';
 include 'header.php';
 ?>
 <div class="container-fluid">

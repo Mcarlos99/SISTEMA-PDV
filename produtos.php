@@ -22,7 +22,7 @@ if (isset($_GET['acao']) && $_GET['acao'] == 'excluir' && isset($_GET['id'])) {
 }
 
 // Template da página
-$titulo_pagina = 'Produtos - Sistema PDV';
+$titulo_pagina = 'Produtos - EXTREME PDV';
 include 'header.php';
 ?>
 

@@ -247,7 +247,7 @@ include 'header.php';
             
             <div class="mt-4 text-center">
                 <p class="mb-1"><?php echo $reimpressao ? 'Reimpressão realizada em ' . date('d/m/Y H:i:s') : 'Fechamento realizado em ' . date('d/m/Y H:i:s'); ?></p>
-                <p class="small text-muted">Mauro Carlos |94| 981709809 - Sistema PDV v1.0</p>
+                <p class="small text-muted">Mauro Carlos |94| 981709809 - EXTREME PDV v1.0</p>
                 <?php if ($reimpressao): ?>
                 <div class="alert alert-info mt-2">
                     <i class="fas fa-info-circle me-2"></i>

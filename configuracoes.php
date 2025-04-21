@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Template da página
-$titulo_pagina = 'Configurações do Sistema - Sistema PDV';
+$titulo_pagina = 'Configurações do Sistema - EXTREME PDV';
 include 'header.php';
 ?>
 

@@ -44,7 +44,7 @@ $stmt->execute();
 $atividades = $stmt->fetchAll();
 
 // Template da página
-$titulo_pagina = 'Visualizar Perfil de Usuário - Sistema PDV';
+$titulo_pagina = 'Visualizar Perfil de Usuário - EXTREME PDV';
 include 'header.php';
 ?>
 

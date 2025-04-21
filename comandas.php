@@ -1,4 +1,10 @@
 <?php
+/**
+ * EXTREME PDV - Gerenciamento de Comandas
+ * 
+ * Este arquivo gerencia a criação, visualização e manipulação de comandas no sistema
+ */
+
 require_once 'config.php';
 
 // Verificar se o usuário está logado
@@ -77,11 +83,45 @@ if ($acao == 'fechar' && isset($_POST['comanda_id'], $_POST['forma_pagamento']))
         $desconto = isset($_POST['desconto']) ? floatval(str_replace(',', '.', $_POST['desconto'])) : 0;
         $observacoes = isset($_POST['observacoes']) ? $_POST['observacoes'] : '';
         
-        $resultado = $comanda_obj->fechar($comanda_id, $forma_pagamento, $desconto, $observacoes);
+        // Verificar se é pagamento parcial
+        $pagamento_parcial = isset($_POST['pagamento_parcial']) && $_POST['pagamento_parcial'] == 'on';
+        $valor_parcial = 0;
         
-        alerta('Comanda fechada e venda registrada com sucesso!', 'success');
-        header('Location: vendas.php?id=' . $resultado['venda_id']);
-        exit;
+        if ($pagamento_parcial && isset($_POST['valor_parcial'])) {
+            $valor_parcial = floatval(str_replace(',', '.', $_POST['valor_parcial']));
+            
+            // Validar valor parcial
+            $comanda_info = $comanda_obj->buscarPorId($comanda_id);
+            $valor_total_comanda = $comanda_info['valor_total'] - $desconto;
+            
+            if ($valor_parcial <= 0) {
+                throw new Exception("O valor do pagamento parcial deve ser maior que zero");
+            }
+            
+            if ($valor_parcial >= $valor_total_comanda) {
+                // Se o valor parcial for igual ou maior que o total, consideramos pagamento completo
+                $pagamento_parcial = false;
+            } elseif ($valor_parcial < ($valor_total_comanda * 0.1)) {
+                // Exemplo: exigir pelo menos 10% do valor total
+                throw new Exception("O pagamento parcial deve ser de pelo menos 10% do valor total");
+            }
+        }
+        
+        if ($pagamento_parcial) {
+            // Para pagamento parcial, usamos uma função específica
+            $resultado = $comanda_obj->fecharParcial($comanda_id, $forma_pagamento, $desconto, $valor_parcial, $observacoes);
+            
+            alerta('Pagamento parcial realizado com sucesso! A comanda continua aberta para pagamentos futuros.', 'success');
+            header('Location: comandas.php?id=' . $comanda_id);
+            exit;
+        } else {
+            // Para pagamento completo, usamos a função existente
+            $resultado = $comanda_obj->fechar($comanda_id, $forma_pagamento, $desconto, $observacoes);
+            
+            alerta('Comanda fechada e venda registrada com sucesso!', 'success');
+            header('Location: vendas.php?id=' . $resultado['venda_id']);
+            exit;
+        }
     } catch (Exception $e) {
         alerta($e->getMessage(), 'danger');
     }
@@ -115,7 +155,7 @@ if (isset($_GET['id'])) {
 }
 
 // Template da página
-$titulo_pagina = 'Controle de Comandas - Sistema PDV';
+$titulo_pagina = 'Controle de Comandas - EXTREME PDV';
 include 'header.php';
 ?>
 
@@ -235,12 +275,69 @@ include 'header.php';
                             <div class="col-md-4">
                                 <div class="card h-100 bg-light">
                                     <div class="card-body">
-                                        <h6 class="text-muted mb-2">Valor Total</h6>
+                                        <h6 class="text-muted mb-2">Informações Financeiras</h6>
+                                        <?php
+                                        // Verificar se há pagamentos parciais
+                                        $total_pago = 0;
+                                        $pagamentos = [];
+                                            
+                                        // Verificar se a classe Comanda tem os métodos para pagamentos parciais
+                                        if (method_exists($comanda_obj, 'calcularTotalPago')) {
+                                            $total_pago = $comanda_obj->calcularTotalPago($comanda['id']);
+                                            $pagamentos = $comanda_obj->listarPagamentosParciais($comanda['id']);
+                                        } else {
+                                            // Tentar buscar diretamente do banco de dados
+                                            try {
+                                                $stmt = $pdo->prepare("
+                                                    SELECT COALESCE(SUM(valor_pago), 0) AS total_pago 
+                                                    FROM pagamentos_comanda 
+                                                    WHERE comanda_id = :comanda_id
+                                                ");
+                                                
+                                                $stmt->bindParam(':comanda_id', $comanda['id'], PDO::PARAM_INT);
+                                                $stmt->execute();
+                                                
+                                                $resultado = $stmt->fetch();
+                                                if ($resultado) {
+                                                    $total_pago = floatval($resultado['total_pago']);
+                                                }
+                                            } catch (Exception $e) {
+                                                // Provavelmente a tabela não existe ainda, mantém $total_pago como 0
+                                            }
+                                        }
+                                            
+                                        $valor_total = $comanda['valor_total'];
+                                        $valor_restante = $valor_total - $total_pago;
+                                        ?>
+                                            
+                                        <!-- Valor total da comanda -->
                                         <h3 class="text-primary mb-0">
-                                            <?php echo formatarDinheiro($comanda['valor_total']); ?>
+                                            <?php echo formatarDinheiro($valor_total); ?>
                                         </h3>
+                                        <p class="text-muted mb-0 font-size-sm">Valor total da comanda</p>
+                                            
+                                        <?php if ($total_pago > 0): ?>
+                                            <hr>
+                                            <div class="d-flex justify-content-between">
+                                                <span>Valor já pago:</span>
+                                                <span class="text-success"><?php echo formatarDinheiro($total_pago); ?></span>
+                                            </div>
+                                            <div class="d-flex justify-content-between">
+                                                <span><strong>Valor restante:</strong></span>
+                                                <span class="text-primary"><strong><?php echo formatarDinheiro($valor_restante); ?></strong></span>
+                                            </div>
+                                            
+                                            <div class="alert alert-info mt-2 mb-0">
+                                                <small>
+                                                    <i class="fas fa-info-circle me-1"></i>
+                                                    Esta comanda possui pagamentos parciais registrados.
+                                                </small>
+                                            </div>
+                                        <?php endif; ?>
+                                            
                                         <?php if (!empty($comanda['observacoes'])): ?>
-                                            <p class="text-muted mt-2">
+                                            <hr>
+                                            <p class="text-muted mt-2 mb-0">
                                                 <i class="fas fa-comment-alt me-1"></i>
                                                 <?php echo esc($comanda['observacoes']); ?>
                                             </p>
@@ -327,6 +424,107 @@ include 'header.php';
                 </div>
             </div>
         </div>
+        <!-- PARTE 2 -->
+        <!-- Histórico de Pagamentos Parciais, se existirem -->
+        <?php
+        // Verificar se a comanda está aberta e se há pagamentos parciais
+        if ($comanda && $comanda['status'] == 'aberta'):
+            // Verificar se a classe Comanda tem método para listar pagamentos
+            if (method_exists($comanda_obj, 'listarPagamentosParciais')):
+                $pagamentos = $comanda_obj->listarPagamentosParciais($comanda['id']);
+            else:
+                // Buscar pagamentos diretamente do banco
+                try {
+                    $stmt = $pdo->prepare("
+                        SELECT 
+                            pc.*, 
+                            DATE_FORMAT(pc.data_pagamento, '%d/%m/%Y %H:%i') AS data_formatada,
+                            u.nome AS usuario_nome
+                        FROM pagamentos_comanda pc
+                        LEFT JOIN usuarios u ON pc.usuario_id = u.id
+                        WHERE pc.comanda_id = :comanda_id
+                        ORDER BY pc.data_pagamento DESC
+                    ");
+                    $stmt->bindParam(':comanda_id', $comanda['id'], PDO::PARAM_INT);
+                    $stmt->execute();
+                    $pagamentos = $stmt->fetchAll();
+                } catch (Exception $e) {
+                    // A tabela pode não existir ainda
+                    $pagamentos = [];
+                }
+            endif;
+            
+            // Se existirem pagamentos parciais, exibir card
+            if (!empty($pagamentos)):
+                // Calcular total já pago (já calculado anteriormente)
+                // Valor restante também já foi calculado
+        ?>
+        <!-- Card de Histórico de Pagamentos -->
+        <div class="card mt-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-history me-2"></i>
+                    Histórico de Pagamentos Parciais
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-3">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <h5 class="mb-0">Total da Comanda: <?php echo formatarDinheiro($comanda['valor_total']); ?></h5>
+                        </div>
+                        <div class="col-md-4">
+                            <h5 class="mb-0">Total Pago: <?php echo formatarDinheiro($total_pago); ?></h5>
+                        </div>
+                        <div class="col-md-4">
+                            <h5 class="mb-0">Valor Restante: <?php echo formatarDinheiro($valor_restante); ?></h5>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Valor Pago</th>
+                                <th>Forma de Pagamento</th>
+                                <th>Operador</th>
+                                <th>Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($pagamentos as $pag): ?>
+                            <tr>
+                                <td><?php echo $pag['data_formatada']; ?></td>
+                                <td><strong><?php echo formatarDinheiro($pag['valor_pago']); ?></strong></td>
+                                <td>
+                                    <?php
+                                    $icones = [
+                                        'dinheiro' => '<i class="fas fa-money-bill-wave text-success me-1"></i> Dinheiro',
+                                        'cartao_credito' => '<i class="fas fa-credit-card text-primary me-1"></i> Cartão de Crédito',
+                                        'cartao_debito' => '<i class="fas fa-credit-card text-info me-1"></i> Cartão de Débito',
+                                        'pix' => '<i class="fas fa-qrcode text-warning me-1"></i> PIX',
+                                        'boleto' => '<i class="fas fa-file-invoice-dollar text-secondary me-1"></i> Boleto',
+                                        'transferencia' => '<i class="fas fa-exchange-alt text-primary me-1"></i> Transferência',
+                                        'cheque' => '<i class="fas fa-money-check text-info me-1"></i> Cheque'
+                                    ];
+                                    echo $icones[$pag['forma_pagamento']] ?? ucfirst(str_replace('_', ' ', $pag['forma_pagamento']));
+                                    ?>
+                                </td>
+                                <td><?php echo esc($pag['usuario_nome']); ?></td>
+                                <td><?php echo esc($pag['observacoes']); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <?php 
+            endif; // fim do if pagamentos
+        endif; // fim do if comanda aberta
+        ?>
     <?php else: ?>
         <!-- Lista de Comandas -->
         <div class="card">
@@ -398,7 +596,43 @@ include 'header.php';
                                                 <span class="text-muted">-</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td><strong><?php echo formatarDinheiro($c['valor_total']); ?></strong></td>
+                                        <td>
+                                            <strong><?php echo formatarDinheiro($c['valor_total']); ?></strong>
+                                            
+                                            <?php
+                                            // Verificar se tem pagamentos parciais
+                                            $tem_parcial = false;
+                                            $total_pago = 0;
+                                            
+                                            try {
+                                                $stmt = $pdo->prepare("
+                                                    SELECT COALESCE(SUM(valor_pago), 0) AS total_pago 
+                                                    FROM pagamentos_comanda 
+                                                    WHERE comanda_id = :comanda_id
+                                                ");
+                                                $stmt->bindParam(':comanda_id', $c['id'], PDO::PARAM_INT);
+                                                $stmt->execute();
+                                                $resultado = $stmt->fetch();
+                                                
+                                                if ($resultado && floatval($resultado['total_pago']) > 0) {
+                                                    $tem_parcial = true;
+                                                    $total_pago = floatval($resultado['total_pago']);
+                                                }
+                                            } catch (Exception $e) {
+                                                // Tabela pode não existir ainda
+                                            }
+                                            
+                                            if ($tem_parcial && $c['status'] == 'aberta'):
+                                                $valor_restante = $c['valor_total'] - $total_pago;
+                                            ?>
+                                                <div>
+                                                    <small class="text-success">Pago: <?php echo formatarDinheiro($total_pago); ?></small>
+                                                </div>
+                                                <div>
+                                                    <small class="text-primary">Restante: <?php echo formatarDinheiro($valor_restante); ?></small>
+                                                </div>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?php echo esc($c['usuario_abertura_nome'] ?? '-'); ?></td>
                                         <td>
                                             <div class="btn-group btn-group-sm">
@@ -484,6 +718,7 @@ include 'header.php';
 </div>
 
 <?php if ($comanda && $comanda['status'] == 'aberta'): ?>
+    <!-- PARTE 3 -->
 <!-- Modal Adicionar Produto -->
 <div class="modal fade" id="modalAdicionarProduto" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -598,11 +833,80 @@ include 'header.php';
                         <p class="mb-1 fw-bold">Valor Total: <span class="text-primary"><?php echo formatarDinheiro($comanda['valor_total']); ?></span></p>
                     </div>
                     
+                    <?php
+                    // Verificar se há pagamentos parciais
+                    $total_pago = 0;
+                    $valor_restante = $comanda['valor_total'];
+
+                    // Verificar se a classe Comanda tem os métodos para pagamentos parciais
+                    if (method_exists($comanda_obj, 'calcularTotalPago')) {
+                        $total_pago = $comanda_obj->calcularTotalPago($comanda['id']);
+                        $valor_restante = $comanda['valor_total'] - $total_pago;
+                    } else {
+                        // Tentar buscar diretamente do banco de dados
+                        try {
+                            $stmt = $pdo->prepare("
+                                SELECT COALESCE(SUM(valor_pago), 0) AS total_pago 
+                                FROM pagamentos_comanda 
+                                WHERE comanda_id = :comanda_id
+                            ");
+                            
+                            $stmt->bindParam(':comanda_id', $comanda['id'], PDO::PARAM_INT);
+                            $stmt->execute();
+                            
+                            $resultado = $stmt->fetch();
+                            if ($resultado) {
+                                $total_pago = floatval($resultado['total_pago']);
+                                $valor_restante = $comanda['valor_total'] - $total_pago;
+                            }
+                        } catch (Exception $e) {
+                            // Provavelmente a tabela não existe ainda, mantém os valores padrão
+                        }
+                    }
+
+                    // Se houver pagamentos parciais, exibir informação
+                    if ($total_pago > 0):
+                    ?>
+                    <div class="alert alert-info mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-info-circle me-2"></i>
+                                Esta comanda já possui pagamentos parciais:
+                            </div>
+                            <div class="text-end">
+                                <div>Total pago: <strong><?php echo formatarDinheiro($total_pago); ?></strong></div>
+                                <div>Valor restante: <strong><?php echo formatarDinheiro($valor_restante); ?></strong></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="total_pago" value="<?php echo $total_pago; ?>">
+                    <input type="hidden" name="valor_restante" value="<?php echo $valor_restante; ?>">
+                    <?php endif; ?>
+                    
+                    <!-- Opção de Pagamento Parcial -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="pagamentoParcial" name="pagamento_parcial">
+                            <label class="form-check-label" for="pagamentoParcial">Pagamento Parcial</label>
+                        </div>
+                        <div id="divValorParcial" class="mt-2 d-none">
+                            <label for="valorParcial" class="form-label">Valor a ser pago agora (R$):</label>
+                            <div class="input-group">
+                                <span class="input-group-text">R$</span>
+                                <input type="number" class="form-control" id="valorParcial" name="valor_parcial" step="0.01" min="0" 
+                                       placeholder="0,00" max="<?php echo $valor_restante; ?>">
+                            </div>
+                            <div class="form-text text-info">O restante ficará como pendente para pagamento futuro.</div>
+                        </div>
+                    </div>
+                    
                     <div class="mb-3">
                         <label for="desconto" class="form-label">Desconto (R$):</label>
                         <div class="input-group">
                             <span class="input-group-text">R$</span>
-                            <input type="number" class="form-control" id="desconto" name="desconto" step="0.01" min="0" max="<?php echo $comanda['valor_total']; ?>" value="0">
+                            <input type="number" class="form-control" id="desconto" name="desconto" step="0.01" min="0" 
+                                   max="<?php echo $valor_restante; ?>" value="0">
                         </div>
                     </div>
                     
@@ -651,7 +955,7 @@ include 'header.php';
                                 <i class="fas fa-receipt fa-2x me-2"></i>
                             </div>
                             <div class="flex-grow-1 ms-2">
-                                <p class="mb-0">Total a pagar: <strong id="total-comanda"><?php echo formatarDinheiro($comanda['valor_total']); ?></strong></p>
+                                <p class="mb-0">Total a pagar: <strong id="total-comanda"><?php echo formatarDinheiro($valor_restante); ?></strong></p>
                             </div>
                         </div>
                     </div>
@@ -663,7 +967,7 @@ include 'header.php';
                     </button>
                     <button type="submit" class="btn btn-info text-white">
                         <i class="fas fa-check-circle me-1"></i>
-                        Fechar e Gerar Venda
+                        <span id="btnTextFechar">Fechar e Gerar Venda</span>
                     </button>
                 </div>
             </form>
@@ -787,7 +1091,7 @@ include 'header.php';
 </style>
 
 <script>
-    $(document).ready(function() {
+    document.addEventListener('DOMContentLoaded', function() {
         // Inicializa DataTables com responsividade para tabela de comandas
         $('#tabelaComandas').DataTable({
             "language": {
@@ -874,99 +1178,148 @@ include 'header.php';
             }
         });
         
-// Mostrar informações do produto selecionado
-$('#produto_id').change(function() {
-    var option = $(this).find('option:selected');
-    var preco = option.data('preco') || 0;
-    var estoque = option.data('estoque') || 0;
-    
-    // Mostra o preço e o estoque disponível
-    $('#preco_exibicao').val(formatarDinheiro(preco).replace('R$ ', ''));
-    $('#estoque-disponivel').text(estoque);
-    
-    // Define o máximo para a quantidade
-    $('#quantidade').attr('max', estoque);
-    
-    // Calcula o subtotal
-    calcularSubtotalProduto();
-});
-
-// Evento para controles de quantidade
-$('#diminuirQtd').click(function() {
-    var qtd = parseInt($('#quantidade').val());
-    if (qtd > 1) {
-        $('#quantidade').val(qtd - 1);
-        calcularSubtotalProduto();
-    }
-});
-
-$('#aumentarQtd').click(function() {
-    var qtd = parseInt($('#quantidade').val());
-    var max = parseInt($('#quantidade').attr('max') || 9999);
-    if (qtd < max) {
-        $('#quantidade').val(qtd + 1);
-        calcularSubtotalProduto();
-    }
-});
-
-$('#quantidade').on('input change keyup', function() {
-    calcularSubtotalProduto();
-});
-
-// Cálculo do subtotal do produto
-function calcularSubtotalProduto() {
-    var option = $('#produto_id').find('option:selected');
-    var preco = parseFloat(option.data('preco')) || 0;
-    var quantidade = parseInt($('#quantidade').val()) || 1; // Use 1 como valor mínimo
-    var subtotal = preco * quantidade;
-    
-    // Atualiza o texto e garante que ele permaneça visível
-    $('#subtotal-produto').text(formatarDinheiro(subtotal));
-    
-    // Garante que o elemento permaneça visível
-    $('#subtotal-produto').closest('.alert').show();
-}
-
-// Garanta que o subtotal seja calculado quando o modal é aberto
-$('#modalAdicionarProduto').on('shown.bs.modal', function() {
-    // Força o cálculo inicial se um produto já estiver selecionado
-    if ($('#produto_id').val()) {
-        calcularSubtotalProduto();
-    }
-});
-
-// Evite que o subtotal seja escondido por outras interações
-$('#modalAdicionarProduto input, #modalAdicionarProduto select').on('focus blur', function() {
-    setTimeout(calcularSubtotalProduto, 100);
-});
-        
-        // Cálculo do valor final após desconto
-        $('#desconto').on('input', function() {
-            var valorTotal = <?php echo isset($comanda['valor_total']) ? $comanda['valor_total'] : 0; ?>;
-            var desconto = parseFloat($(this).val()) || 0;
+        // Mostrar informações do produto selecionado
+        $('#produto_id').change(function() {
+            var option = $(this).find('option:selected');
+            var preco = option.data('preco') || 0;
+            var estoque = option.data('estoque') || 0;
             
-            // Limita o desconto ao valor total
-            if (desconto > valorTotal) {
-                desconto = valorTotal;
-                $(this).val(valorTotal);
+            // Mostra o preço e o estoque disponível
+            $('#preco_exibicao').val(formatarDinheiro(preco).replace('R$ ', ''));
+            $('#estoque-disponivel').text(estoque);
+            
+            // Define o máximo para a quantidade
+            $('#quantidade').attr('max', estoque);
+            
+            // Calcula o subtotal
+            calcularSubtotalProduto();
+        });
+
+        // Evento para controles de quantidade
+        $('#diminuirQtd').click(function() {
+            var qtd = parseInt($('#quantidade').val());
+            if (qtd > 1) {
+                $('#quantidade').val(qtd - 1);
+                calcularSubtotalProduto();
+            }
+        });
+
+        $('#aumentarQtd').click(function() {
+            var qtd = parseInt($('#quantidade').val());
+            var max = parseInt($('#quantidade').attr('max') || 9999);
+            if (qtd < max) {
+                $('#quantidade').val(qtd + 1);
+                calcularSubtotalProduto();
+            }
+        });
+
+        $('#quantidade').on('input change keyup', function() {
+            calcularSubtotalProduto();
+        });
+
+        // Controlar pagamento parcial
+        const checkboxParcial = document.getElementById('pagamentoParcial');
+        const divValorParcial = document.getElementById('divValorParcial');
+        const inputValorParcial = document.getElementById('valorParcial');
+        const inputDesconto = document.getElementById('desconto');
+        const btnTextFechar = document.getElementById('btnTextFechar');
+        const valorTotalComanda = <?php echo isset($comanda['valor_total']) ? $comanda['valor_total'] : 0; ?>;
+        const totalPago = <?php echo $total_pago ?? 0; ?>;
+        const valorRestante = valorTotalComanda - totalPago;
+        
+        if (checkboxParcial) {
+            checkboxParcial.addEventListener('change', function() {
+                if (this.checked) {
+                    divValorParcial.classList.remove('d-none');
+                    inputValorParcial.setAttribute('required', 'required');
+                    inputValorParcial.setAttribute('max', valorRestante - parseFloat(inputDesconto.value || 0));
+                    btnTextFechar.textContent = 'Registrar Pagamento Parcial';
+                } else {
+                    divValorParcial.classList.add('d-none');
+                    inputValorParcial.removeAttribute('required');
+                    btnTextFechar.textContent = 'Fechar e Gerar Venda';
+                }
+                atualizarTotalPagar();
+            });
+        }
+        
+        // Atualizar quando o valor parcial ou desconto mudar
+        if (inputValorParcial) {
+            inputValorParcial.addEventListener('input', atualizarTotalPagar);
+        }
+        
+        if (inputDesconto) {
+            inputDesconto.addEventListener('input', function() {
+                if (checkboxParcial && checkboxParcial.checked) {
+                    const valorMaximo = valorRestante - parseFloat(this.value || 0);
+                    inputValorParcial.setAttribute('max', valorMaximo);
+                    if (parseFloat(inputValorParcial.value || 0) > valorMaximo) {
+                        inputValorParcial.value = valorMaximo;
+                    }
+                }
+                atualizarTotalPagar();
+            });
+        }
+        
+        // Cálculo do subtotal do produto
+        function calcularSubtotalProduto() {
+            var option = $('#produto_id').find('option:selected');
+            var preco = parseFloat(option.data('preco')) || 0;
+            var quantidade = parseInt($('#quantidade').val()) || 1; // Use 1 como valor mínimo
+            var subtotal = preco * quantidade;
+            
+            // Atualiza o texto e garante que ele permaneça visível
+            $('#subtotal-produto').text(formatarDinheiro(subtotal));
+            
+            // Garante que o elemento permaneça visível
+            $('#subtotal-produto').closest('.alert').show();
+        }
+        
+        // Para garantir que o subtotal seja calculado quando o modal é aberto
+        $('#modalAdicionarProduto').on('shown.bs.modal', function() {
+            // Força o cálculo inicial se um produto já estiver selecionado
+            if ($('#produto_id').val()) {
+                calcularSubtotalProduto();
+            }
+        });
+        
+        // Evite que o subtotal seja escondido por outras interações
+        $('#modalAdicionarProduto input, #modalAdicionarProduto select').on('focus blur', function() {
+            setTimeout(calcularSubtotalProduto, 100);
+        });
+        
+        // Atualizar valor final a pagar
+        function atualizarTotalPagar() {
+            const totalComandaElement = document.getElementById('total-comanda');
+            if (!totalComandaElement) return;
+            
+            const valorDesconto = parseFloat(inputDesconto.value || 0);
+            let valorTotal = valorRestante - valorDesconto;
+            
+            if (valorTotal < 0) valorTotal = 0;
+            
+            if (checkboxParcial && checkboxParcial.checked && inputValorParcial) {
+                const valorParcial = parseFloat(inputValorParcial.value || 0);
+                if (valorParcial > 0 && valorParcial <= valorTotal) {
+                    valorTotal = valorParcial;
+                }
             }
             
-            var totalPagar = valorTotal - desconto;
-            $('#total-comanda').text(formatarDinheiro(totalPagar));
-        });
+            totalComandaElement.textContent = formatarDinheiro(valorTotal);
+        }
         
         // Função para formatar valores monetários
         function formatarDinheiro(valor) {
-    // Converte para número antes de usar toFixed
-    var num = parseFloat(valor);
-    
-    // Verifica se é um número válido
-    if (isNaN(num)) {
-        num = 0;
-    }
-    
-    return 'R$ ' + num.toFixed(2).replace('.', ',');
-}
+            // Converte para número antes de usar toFixed
+            var num = parseFloat(valor);
+            
+            // Verifica se é um número válido
+            if (isNaN(num)) {
+                num = 0;
+            }
+            
+            return 'R$ ' + num.toFixed(2).replace('.', ',');
+        }
         
         // Se o hash da URL contiver o ID de um modal, abre-o
         if(window.location.hash) {

@@ -2,7 +2,7 @@
 /**
  * Classe de Gerenciamento de Vendas
  * 
- * Responsável por operações relacionadas às vendas no sistema PDV
+ * Responsável por operações relacionadas às vendas no EXTREME PDV
  */
 class Venda
 {

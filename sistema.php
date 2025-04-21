@@ -1,6 +1,6 @@
 <?php
 /*
- * Sistema PDV (Ponto de Venda)
+ * EXTREME PDV (Ponto de Venda)
  * 
  * Arquivo principal do sistema contendo:
  * - Funções de conexão com banco de dados
@@ -648,6 +648,94 @@ class Caixa {
             throw $e;
         }
     }
+
+    /**
+ * Registrar movimentação no caixa
+ * 
+ * @param array|int $param1 Array com dados da movimentação ou ID do caixa
+ * @param string|null $tipo Tipo de movimentação (venda, sangria, suprimento)
+ * @param float|null $valor Valor da movimentação
+ * @param string|null $forma_pagamento Forma de pagamento (opcional)
+ * @param string|null $observacoes Observações (opcional)
+ * @param int|null $documento_id ID do documento relacionado (opcional)
+ * @return int|false ID da movimentação criada ou false em caso de erro
+ */
+public function registrarMovimentacao($param1, $tipo = null, $valor = null, $forma_pagamento = null, $observacoes = null, $documento_id = null) {
+    try {
+        // Verificar o tipo do primeiro parâmetro para determinar a forma de chamada
+        if (is_array($param1)) {
+            // Chamada com array de parâmetros
+            $dados = $param1;
+            
+            // Verificar se existe um caixa aberto
+            $caixa = $this->verificarCaixaAberto();
+            if (!$caixa) {
+                throw new Exception("Não há um caixa aberto para registrar esta movimentação.");
+            }
+            
+            $caixa_id = $caixa['id'];
+            $tipo = $dados['tipo'];
+            $valor = $dados['valor'];
+            $forma_pagamento = $dados['forma_pagamento'] ?? null;
+            $documento_id = $dados['documento_id'] ?? null;
+            $observacoes = $dados['observacoes'] ?? null;
+        } else {
+            // Chamada com parâmetros individuais
+            $caixa_id = $param1;
+        }
+        
+        $stmt = $this->pdo->prepare("
+            INSERT INTO movimentacoes_caixa 
+            (caixa_id, usuario_id, tipo, valor, forma_pagamento, documento_id, observacoes) 
+            VALUES 
+            (:caixa_id, :usuario_id, :tipo, :valor, :forma_pagamento, :documento_id, :observacoes)
+        ");
+        
+        $usuario_id = $_SESSION['usuario_id'];
+        
+        $stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+        $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        $stmt->bindParam(':tipo', $tipo, PDO::PARAM_STR);
+        $stmt->bindParam(':valor', $valor, PDO::PARAM_STR);
+        
+        if ($forma_pagamento === null) {
+            $stmt->bindParam(':forma_pagamento', $forma_pagamento, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindParam(':forma_pagamento', $forma_pagamento, PDO::PARAM_STR);
+        }
+        
+        if ($documento_id === null) {
+            $stmt->bindParam(':documento_id', $documento_id, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindParam(':documento_id', $documento_id, PDO::PARAM_INT);
+        }
+        
+        $stmt->bindParam(':observacoes', $observacoes, PDO::PARAM_STR);
+        
+        $stmt->execute();
+        $movimentacao_id = $this->pdo->lastInsertId();
+        
+        // Registrar no log do sistema
+        if (isset($GLOBALS['log'])) {
+            $tipo_texto = ucfirst($tipo);
+            $valor_formatado = formatarDinheiro($valor);
+            
+            $GLOBALS['log']->registrar(
+                'Caixa', 
+                "{$tipo_texto} registrada no caixa #{$caixa_id} no valor de {$valor_formatado}"
+            );
+        }
+        
+        return $movimentacao_id;
+        
+    } catch (Exception $e) {
+        error_log("Erro ao registrar movimentação: " . $e->getMessage());
+        return false;
+    }
+}
+
+
+
 
     // Adicionar uma movimentação (venda, sangria ou suprimento)
     public function adicionarMovimentacao($dados) {
@@ -2715,7 +2803,9 @@ class Comanda {
         }
     }
 
-    // Fechar comanda e gerar venda
+/**
+ * Versão modificada do método fechar original para lidar com pagamentos parciais
+ */
 public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoes = '') {
     try {
         // Inicia transação
@@ -2735,6 +2825,23 @@ public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoe
             throw new Exception("Comanda vazia. Não é possível fechá-la.");
         }
         
+        // Verificar pagamentos parciais
+        $total_pago = $this->calcularTotalPago($comanda_id);
+        $valor_total = $comanda['valor_total'];
+        $valor_com_desconto = $valor_total - $desconto;
+        
+        // Se já houve pagamentos parciais, adicionar observação
+        $obs_pagamento = "";
+        if ($total_pago > 0) {
+            $obs_pagamento = "Esta comanda teve R$ " . number_format($total_pago, 2, ',', '.') . 
+                           " pagos anteriormente em parcelas. ";
+            
+            // Verificar se o valor do desconto é válido
+            if ($desconto > $valor_total - $total_pago) {
+                throw new Exception("O desconto não pode ser maior que o valor restante a pagar.");
+            }
+        }
+        
         // Atualiza status da comanda
         $usuario_id = $_SESSION['usuario_id'];
         $stmt = $this->pdo->prepare("
@@ -2742,31 +2849,34 @@ public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoe
                 status = 'fechada',
                 data_fechamento = NOW(),
                 usuario_fechamento_id = :usuario_id,
-                observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :observacoes)
+                observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :obs_pagamento, :observacoes)
             WHERE id = :id
         ");
         
         $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        $stmt->bindParam(':obs_pagamento', $obs_pagamento);
         $stmt->bindParam(':observacoes', $observacoes);
         $stmt->bindParam(':id', $comanda_id, PDO::PARAM_INT);
         $stmt->execute();
         
-// Cria uma venda a partir da comanda
-$venda = new Venda($this->pdo);
-
-$valor_total = $comanda['valor_total'] - $desconto;
-
-$dados_venda = [
-    'cliente_id' => $comanda['cliente_id'],
-    'valor_total' => $valor_total,
-    'desconto' => $desconto,
-    'forma_pagamento' => $forma_pagamento,
-    'status' => 'finalizada',
-    'observacoes' => 'Venda gerada a partir da comanda #' . $comanda_id . 
-                    ($observacoes ? "\n" . $observacoes : ''),
-    'itens' => [],
-    'nao_atualizar_estoque' => true  // Adicionar esta linha!
-];
+        // Cria uma venda a partir da comanda
+        $venda = new Venda($this->pdo);
+        
+        // Se houve pagamentos parciais, ajustar valor total da venda
+        $valor_venda = $valor_com_desconto - $total_pago;
+        
+        $dados_venda = [
+            'cliente_id' => $comanda['cliente_id'],
+            'valor_total' => $valor_venda,
+            'desconto' => $desconto,
+            'forma_pagamento' => $forma_pagamento,
+            'status' => 'finalizada',
+            'observacoes' => 'Venda gerada a partir da comanda #' . $comanda_id . 
+                            ($total_pago > 0 ? " (pagamento final após parciais)" : "") . 
+                            ($observacoes ? "\n" . $observacoes : ''),
+            'itens' => [],
+            'nao_atualizar_estoque' => true  // O estoque já foi atualizado ao adicionar à comanda
+        ];
         
         // Prepara os itens para a venda
         foreach ($itens as $item) {
@@ -2796,17 +2906,17 @@ $dados_venda = [
         
         // Registrar no log do sistema
         if (isset($GLOBALS['log'])) {
-            $GLOBALS['log']->registrar(
-                'Comanda', 
-                "Comanda #{$comanda_id} fechada e convertida na venda #{$venda_id}"
-            );
+            $log_message = "Comanda #{$comanda_id} fechada e convertida na venda #{$venda_id}";
+            if ($total_pago > 0) {
+                $log_message .= " (após pagamentos parciais anteriores)";
+            }
+            $GLOBALS['log']->registrar('Comanda', $log_message);
         }
         
         return [
             'comanda_id' => $comanda_id,
             'venda_id' => $venda_id
         ];
-        
     } catch (Exception $e) {
         // Desfaz transação em caso de erro
         if ($this->pdo->inTransaction()) {
@@ -2959,6 +3069,260 @@ $dados_venda = [
             throw $e;
         }
     }
+// FECHARMENTO DE COMANDAS COM PAGAMENTO PARCIAL
+/**
+ * Registrar pagamento parcial de comanda
+ * 
+ * @param int $comanda_id ID da comanda
+ * @param string $forma_pagamento Forma de pagamento
+ * @param float $desconto Valor do desconto
+ * @param float $valor_parcial Valor do pagamento parcial
+ * @param string $observacoes Observações
+ * @return bool Sucesso ou falha
+ */
+public function fecharParcial($comanda_id, $forma_pagamento, $desconto = 0, $valor_parcial = 0, $observacoes = '') {
+    try {
+        // Inicia transação
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+        }
+        
+        // Verifica se a comanda existe e está aberta
+        $comanda = $this->buscarPorId($comanda_id);
+        if (!$comanda || $comanda['status'] != 'aberta') {
+            throw new Exception("Comanda não encontrada ou não está aberta.");
+        }
+        
+        // Calcula valores
+        $valor_total = $comanda['valor_total'];
+        $valor_com_desconto = $valor_total - $desconto;
+        
+        if ($valor_parcial <= 0 || $valor_parcial >= $valor_com_desconto) {
+            throw new Exception("Valor parcial inválido.");
+        }
+        
+        // Registra o pagamento parcial na tabela pagamentos_comanda
+        // Primeiro, verifica se a tabela existe e cria se necessário
+        $this->criarTabelaPagamentosComanda();
+        
+        $usuario_id = $_SESSION['usuario_id'];
+        $stmt = $this->pdo->prepare("
+            INSERT INTO pagamentos_comanda (
+                comanda_id, 
+                valor_pago, 
+                forma_pagamento, 
+                usuario_id, 
+                observacoes
+            ) VALUES (
+                :comanda_id,
+                :valor_pago,
+                :forma_pagamento,
+                :usuario_id,
+                :observacoes
+            )
+        ");
+        
+        $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+        $stmt->bindParam(':valor_pago', $valor_parcial);
+        $stmt->bindParam(':forma_pagamento', $forma_pagamento);
+        $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        $stmt->bindParam(':observacoes', $observacoes);
+        $stmt->execute();
+        
+        // Atualiza as observações da comanda
+        $data_atual = date('d/m/Y H:i');
+        $obs_pagamento = "Pagamento parcial de R$ " . number_format($valor_parcial, 2, ',', '.') . 
+                        " realizado em {$data_atual} via {$forma_pagamento}. ";
+        
+        if (!empty($observacoes)) {
+            $obs_pagamento .= "Obs: {$observacoes}";
+        }
+        
+        $stmt = $this->pdo->prepare("
+            UPDATE comandas SET
+                observacoes = CONCAT(IFNULL(observacoes, ''), '\n', :nova_obs)
+            WHERE id = :id
+        ");
+        
+        $stmt->bindParam(':nova_obs', $obs_pagamento);
+        $stmt->bindParam(':id', $comanda_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        // Registrar no caixa se houver um aberto
+        if (class_exists('Caixa')) {
+            $caixa = new Caixa($this->pdo);
+            $caixa_aberto = $caixa->verificarCaixaAberto();
+            
+            if ($caixa_aberto) {
+                $caixa->registrarMovimentacao([
+                    'tipo' => 'venda',
+                    'valor' => $valor_parcial,
+                    'forma_pagamento' => $forma_pagamento,
+                    'documento_id' => $comanda_id,
+                    'observacoes' => "Pagamento parcial da comanda #{$comanda_id}"
+                ]);
+            }
+        }
+        
+        // Finaliza transação
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->commit();
+        }
+        
+        // Registrar no log do sistema
+        if (isset($GLOBALS['log'])) {
+            $GLOBALS['log']->registrar(
+                'Comanda', 
+                "Pagamento parcial de R$ " . number_format($valor_parcial, 2, ',', '.') . 
+                " registrado para a comanda #{$comanda_id}"
+            );
+        }
+        
+        return true;
+        
+    } catch (Exception $e) {
+        // Desfaz transação em caso de erro
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
+        error_log("Erro ao registrar pagamento parcial: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+/**
+ * Buscar pagamentos parciais da comanda
+ * 
+ * @param int $comanda_id ID da comanda
+ * @return array Lista de pagamentos parciais
+ */
+public function listarPagamentosParciais($comanda_id) {
+    try {
+        // Verificar se a tabela existe antes de consultar
+        $tabelas = $this->pdo->query("SHOW TABLES LIKE 'pagamentos_comanda'")->fetchAll();
+        
+        if (empty($tabelas)) {
+            // Se a tabela não existir, retorna array vazio
+            return [];
+        }
+        
+        // Busca pagamentos
+        $stmt = $this->pdo->prepare("
+            SELECT 
+                pc.*, 
+                DATE_FORMAT(pc.data_pagamento, '%d/%m/%Y %H:%i') AS data_formatada,
+                u.nome AS usuario_nome
+            FROM pagamentos_comanda pc
+            LEFT JOIN usuarios u ON pc.usuario_id = u.id
+            WHERE pc.comanda_id = :comanda_id
+            ORDER BY pc.data_pagamento DESC
+        ");
+        
+        $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        error_log("Erro ao listar pagamentos parciais: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Calcular valor total já pago da comanda
+ * 
+ * @param int $comanda_id ID da comanda
+ * @return float Valor total pago
+ */
+public function calcularTotalPago($comanda_id) {
+    try {
+        // Verificar se a tabela existe antes de consultar
+        $tabelas = $this->pdo->query("SHOW TABLES LIKE 'pagamentos_comanda'")->fetchAll();
+        
+        if (empty($tabelas)) {
+            // Se a tabela não existir, retorna zero
+            return 0;
+        }
+        
+        // Calcular soma dos pagamentos
+        $stmt = $this->pdo->prepare("
+            SELECT COALESCE(SUM(valor_pago), 0) AS total_pago 
+            FROM pagamentos_comanda 
+            WHERE comanda_id = :comanda_id
+        ");
+        
+        $stmt->bindParam(':comanda_id', $comanda_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $resultado = $stmt->fetch();
+        return floatval($resultado['total_pago']);
+    } catch (Exception $e) {
+        error_log("Erro ao calcular total pago: " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Calcular valor restante a pagar da comanda
+ * 
+ * @param int $comanda_id ID da comanda
+ * @return float Valor restante a pagar
+ */
+public function calcularValorRestante($comanda_id) {
+    try {
+        // Buscar informações da comanda
+        $comanda = $this->buscarPorId($comanda_id);
+        
+        if (!$comanda) {
+            throw new Exception("Comanda não encontrada");
+        }
+        
+        // Calcular total pago
+        $total_pago = $this->calcularTotalPago($comanda_id);
+        
+        // Calcular valor restante
+        $valor_restante = $comanda['valor_total'] - $total_pago;
+        
+        return max(0, $valor_restante); // Garantir que não retorne valor negativo
+    } catch (Exception $e) {
+        error_log("Erro ao calcular valor restante: " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Criar tabela de pagamentos da comanda se não existir
+ */
+private function criarTabelaPagamentosComanda() {
+    try {
+        // Verifica se a tabela existe
+        $tabelas = $this->pdo->query("SHOW TABLES LIKE 'pagamentos_comanda'")->fetchAll();
+        
+        if (empty($tabelas)) {
+            // Cria a tabela se não existir
+            $this->pdo->exec("
+                CREATE TABLE pagamentos_comanda (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    comanda_id INT NOT NULL,
+                    valor_pago DECIMAL(10,2) NOT NULL,
+                    forma_pagamento ENUM('dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'boleto', 'transferencia', 'cheque') NOT NULL,
+                    data_pagamento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    usuario_id INT NOT NULL,
+                    observacoes TEXT,
+                    FOREIGN KEY (comanda_id) REFERENCES comandas(id) ON DELETE CASCADE,
+                    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            ");
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao criar tabela de pagamentos_comanda: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+
+
+
 }
 
 

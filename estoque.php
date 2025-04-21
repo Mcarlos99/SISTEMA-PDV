@@ -101,7 +101,7 @@ if ($acao == 'relatorio' || $filtro_produto) {
 }
 
 // Template da página
-$titulo_pagina = 'Controle de Estoque - Sistema PDV';
+$titulo_pagina = 'Controle de Estoque - EXTREME PDV';
 include 'header.php';
 ?>
 

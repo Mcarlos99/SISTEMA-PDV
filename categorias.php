@@ -124,7 +124,7 @@ if (isset($_GET['id'])) {
 }
 
 // Template da página
-$titulo_pagina = 'Gerenciamento de Categorias - Sistema PDV';
+$titulo_pagina = 'Gerenciamento de Categorias - EXTREME PDV';
 include 'header.php';
 ?>
 

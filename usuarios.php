@@ -141,7 +141,7 @@ if (isset($_GET['editar'])) {
 }
 
 // Template da página
-$titulo_pagina = 'Gerenciamento de Usuários - Sistema PDV';
+$titulo_pagina = 'Gerenciamento de Usuários - EXTREME PDV';
 include 'header.php';
 ?>
 <!-- PARTE 3 -->

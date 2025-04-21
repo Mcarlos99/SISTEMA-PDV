@@ -159,7 +159,7 @@ if (isset($_GET['id'])) {
 }
 
 // Template da página
-$titulo_pagina = 'Gestão de Compras - Sistema PDV';
+$titulo_pagina = 'Gestão de Compras - EXTREME PDV';
 include 'header.php';
 ?>
 
