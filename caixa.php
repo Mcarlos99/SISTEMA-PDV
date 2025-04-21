@@ -117,6 +117,7 @@ if ($caixa_aberto) {
         v.valor_total, 
         v.forma_pagamento,
         v.observacoes,
+        v.comanda_id,
         u.nome AS usuario_nome
     FROM vendas v
     LEFT JOIN usuarios u ON v.usuario_id = u.id
@@ -126,7 +127,7 @@ if ($caixa_aberto) {
           SELECT 1 FROM movimentacoes_caixa m 
           WHERE m.documento_id = v.id AND m.tipo = 'venda'
       )
-");
+    ");
     $stmt->execute();
     $vendas_nao_registradas = $stmt->fetchAll();
 
@@ -145,32 +146,30 @@ if ($caixa_aberto) {
     $stmt->execute();
     $movs_para_remover = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-    // Remover as movimentações de vendas canceladas
-    foreach ($movs_para_remover as $mov_id) {
-        $stmt = $pdo->prepare("DELETE FROM movimentacoes_caixa WHERE id = :id");
-        $stmt->bindParam(':id', $mov_id, PDO::PARAM_INT);
-        $stmt->execute();
+// Registrar as vendas encontradas nas movimentações do caixa
+foreach ($vendas_nao_registradas as $venda) {
+    // Verificar se é uma venda de comanda
+    $observacao = "Venda #{$venda['id']} registrada automaticamente no caixa";
+    if (!empty($venda['comanda_id'])) {
+        $observacao = "Venda #{$venda['id']} gerada a partir da comanda #{$venda['comanda_id']}";
     }
-
     
-    // Registrar as vendas encontradas nas movimentações do caixa
-    foreach ($vendas_nao_registradas as $venda) {
-        $dados = [
-            'tipo' => 'venda',
-            'valor' => $venda['valor_total'],
-            'forma_pagamento' => $venda['forma_pagamento'],
-            'documento_id' => $venda['id'],
-            'observacoes' => "Venda #{$venda['id']} registrada automaticamente no caixa"
-        ];
-        
-        // Usar a função da classe Caixa para registrar a movimentação
-        try {
-            $caixa_obj->adicionarMovimentacao($dados);
-        } catch (Exception $e) {
-            // Apenas registrar o erro, sem interromper a execução
-            error_log("Erro ao adicionar venda #{$venda['id']} às movimentações do caixa: " . $e->getMessage());
-        }
+    $dados = [
+        'tipo' => 'venda',
+        'valor' => $venda['valor_total'],
+        'forma_pagamento' => $venda['forma_pagamento'],
+        'documento_id' => $venda['id'],
+        'observacoes' => $observacao
+    ];
+    
+    // Usar a função da classe Caixa para registrar a movimentação
+    try {
+        $caixa_obj->adicionarMovimentacao($dados);
+    } catch (Exception $e) {
+        // Apenas registrar o erro, sem interromper a execução
+        error_log("Erro ao adicionar venda #{$venda['id']} às movimentações do caixa: " . $e->getMessage());
     }
+}
     
     // Agora buscar todas as movimentações atualizadas
     $movimentacoes = $caixa_obj->listarMovimentacoes($caixa_aberto['id']);

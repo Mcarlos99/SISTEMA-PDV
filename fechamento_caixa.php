@@ -35,6 +35,71 @@ try {
     $movimentacoes = $caixa->listarMovimentacoes($caixa_id);
     $resumo_pagamentos = $caixa->resumoVendasPorFormaPagamento($caixa_id);
     
+// Verificar se há vendas de comandas que não foram registradas no caixa
+$stmt = $pdo->prepare("
+    SELECT 
+        v.id, 
+        v.data_venda, 
+        v.valor_total, 
+        v.forma_pagamento,
+        v.comanda_id,
+        v.usuario_id,
+        u.nome AS usuario_nome
+    FROM vendas v
+    LEFT JOIN usuarios u ON v.usuario_id = u.id
+    WHERE v.comanda_id IS NOT NULL 
+      AND v.status = 'finalizada'
+      AND DATE(v.data_venda) = DATE(:data_caixa)
+      AND v.usuario_id = :usuario_id
+      AND NOT EXISTS (
+          SELECT 1 FROM movimentacoes_caixa m 
+          WHERE m.documento_id = v.id AND m.tipo = 'venda' AND m.caixa_id = :caixa_id
+      )
+");
+$stmt->bindParam(':caixa_id', $caixa_id, PDO::PARAM_INT);
+$stmt->bindParam(':data_caixa', $caixa_info['data_abertura'], PDO::PARAM_STR);
+$stmt->bindParam(':usuario_id', $caixa_info['usuario_id'], PDO::PARAM_INT);
+$stmt->execute();
+$vendas_comanda_nao_registradas = $stmt->fetchAll();
+
+    // Se encontrou vendas de comandas não registradas no caixa sendo reimpresso,
+    // adicione-as temporariamente ao array de movimentações para exibição
+    foreach ($vendas_comanda_nao_registradas as $venda) {
+        // Criar movimentação temporária apenas para exibição
+        $movimentacoes[] = [
+            'id' => 'temp_' . $venda['id'], // ID temporário para identificação
+            'caixa_id' => $caixa_id,
+            'usuario_id' => $venda['usuario_id'],
+            'usuario_nome' => $venda['usuario_nome'],
+            'data_hora' => $venda['data_venda'],
+            'data_formatada' => date('d/m/Y H:i', strtotime($venda['data_venda'])),
+            'tipo' => 'venda',
+            'valor' => $venda['valor_total'],
+            'forma_pagamento' => $venda['forma_pagamento'],
+            'documento_id' => $venda['id'],
+            'observacoes' => "Venda #{$venda['id']} gerada a partir da comanda #{$venda['comanda_id']} (não registrada no caixa)"
+        ];
+        
+// Atualizar também o resumo de pagamentos
+$encontrado = false;
+foreach ($resumo_pagamentos as $key => $resumo) {
+    if ($resumo['forma_pagamento'] == $venda['forma_pagamento']) {
+        $resumo_pagamentos[$key]['quantidade']++;
+        $resumo_pagamentos[$key]['total'] += $venda['valor_total'];
+        $encontrado = true;
+        break;
+    }
+}
+
+if (!$encontrado && !empty($venda['forma_pagamento'])) {
+    $resumo_pagamentos[] = [
+        'forma_pagamento' => $venda['forma_pagamento'],
+        'quantidade' => 1,
+        'total' => $venda['valor_total']
+    ];
+}
+    }
+    
     // Se for uma reimpressão, construa o array de fechamento com os dados do caixa
     if ($reimpressao) {
         $fechamento = [

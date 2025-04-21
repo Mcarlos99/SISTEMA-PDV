@@ -2924,6 +2924,33 @@ public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoe
             $stmt->execute();
         }
         
+        // Registrar a venda no caixa se houver um caixa aberto
+        if ($venda_id) {
+            $caixa = new Caixa($this->pdo);
+            $caixa_aberto = $caixa->verificarCaixaAberto();
+            
+            if ($caixa_aberto) {
+                $observacao = "Venda #{$venda_id} gerada a partir da comanda #{$comanda_id}";
+                if ($total_pago > 0) {
+                    $observacao .= " (pagamento final após parciais)";
+                }
+                
+                $dados_movimentacao = [
+                    'tipo' => 'venda',
+                    'valor' => $valor_venda,
+                    'forma_pagamento' => $forma_pagamento,
+                    'documento_id' => $venda_id,
+                    'observacoes' => $observacao
+                ];
+                
+                try {
+                    $caixa->adicionarMovimentacao($dados_movimentacao);
+                } catch (Exception $e) {
+                    error_log("Erro ao registrar venda #{$venda_id} no caixa: " . $e->getMessage());
+                }
+            }
+        }
+        
         // Finaliza transação
         if ($this->pdo->inTransaction()) {
             $this->pdo->commit();
@@ -2951,7 +2978,6 @@ public function fechar($comanda_id, $forma_pagamento, $desconto = 0, $observacoe
         throw $e;
     }
 }
-
     // Cancelar comanda
     public function cancelar($comanda_id, $observacoes = '') {
         try {
