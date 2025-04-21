@@ -1978,7 +1978,32 @@ class Venda {
         $this->pdo = $pdo;
         $this->produto = new Produto($pdo);
     }
-
+/**
+ * Listar vendas de um cliente específico
+ * 
+ * @param int $cliente_id ID do cliente
+ * @return array Lista de vendas do cliente
+ */
+    public function listarVendasCliente($cliente_id) {
+        try {
+            $sql = "
+                SELECT v.*, 
+                       DATE_FORMAT(v.data_venda, '%d/%m/%Y %H:%i') AS data_formatada,
+                       u.nome AS usuario_nome
+                FROM vendas v
+                LEFT JOIN usuarios u ON v.usuario_id = u.id
+                WHERE v.cliente_id = ?
+                ORDER BY v.data_venda DESC
+            ";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([$cliente_id]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("Erro ao listar vendas do cliente: " . $e->getMessage());
+            return [];
+        }
+    }
     // Listar todas as vendas
     public function listar() {
         try {
