@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXTREME PDV - Sistema de Ponto de Venda Completo</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0d6efd;
+            --primary-dark: #0a58ca;
+            --secondary: #6c757d;
+            --success: #198754;
+            --info: #0dcaf0;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --light: #f8f9fa;
+            --dark: #212529;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f8f9fa;
+            color: #212529;
+            line-height: 1.6;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        
+        .hero {
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .hero p {
+            font-size: 1.25rem;
+            margin-bottom: 2rem;
+            color: #6c757d;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .pricing-section {
+            padding: 5rem 0;
+            background-color: white;
+        }
+        
+        .pricing-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .pricing-header h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+        
+        .pricing-header p {
+            font-size: 1.1rem;
+            color: #6c757d;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .pricing-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+        }
+        
+        .pricing-card {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            width: 100%;
+            max-width: 350px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        .pricing-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-popular {
+            position: relative;
+        }
+        
+        .popular-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background-color: var(--warning);
+            color: var(--dark);
+            padding: 0.5rem 1rem;
+            font-weight: bold;
+            z-index: 2;
+            transform: translateX(30%) translateY(-0%) rotate(45deg);
+            width: 200px;
+            text-align: center;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .pricing-header-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .pricing-header-basic {
+            background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+        }
+        
+        .pricing-header-standard {
+            background: linear-gradient(135deg, #bbdefb 0%, #90caf9 100%);
+        }
+        
+        .pricing-header-premium {
+            background: linear-gradient(135deg, #d1c4e9 0%, #b39ddb 100%);
+        }
+        
+        .pricing-card h3 {
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .pricing-price {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .pricing-period {
+            font-size: 1rem;
+            color: #6c757d;
+            margin-bottom: 1rem;
+        }
+        
+        .pricing-body {
+            padding: 2rem;
+            flex-grow: 1;
+        }
+        
+        .features-list {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+        
+        .features-list li {
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+        .features-list i {
+            margin-right: 0.75rem;
+            color: var(--success);
+            margin-top: 0.25rem;
+        }
+        
+        .features-list .feature-unavailable {
+            color: #adb5bd;
+        }
+        
+        .features-list .feature-unavailable i {
+            color: #dee2e6;
+        }
+        
+        .pricing-footer {
+            padding: 0 2rem 2rem;
+            text-align: center;
+        }
+        
+        .btn {
+            display: inline-block;
+            font-weight: 500;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: middle;
+            user-select: none;
+            border: 1px solid transparent;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            line-height: 1.5;
+            border-radius: 0.25rem;
+            transition: all 0.15s ease-in-out;
+            text-decoration: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .btn-outline-primary {
+            color: var(--primary);
+            background-color: transparent;
+            border-color: var(--primary);
+        }
+        
+        .btn-outline-primary:hover {
+            color: white;
+            background-color: var(--primary);
+        }
+        
+        .btn-primary {
+            color: white;
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+        }
+        
+        .btn-outline-purple {
+            color: #6f42c1;
+            background-color: transparent;
+            border-color: #6f42c1;
+        }
+        
+        .btn-outline-purple:hover {
+            color: white;
+            background-color: #6f42c1;
+        }
+        
+        .features-section {
+            padding: 5rem 0;
+            background-color: #f8f9fa;
+        }
+        
+        .features-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .features-header h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+        
+        .features-header p {
+            font-size: 1.1rem;
+            color: #6c757d;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .feature-card {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            padding: 2rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-card i {
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+        }
+        
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .feature-card p {
+            color: #6c757d;
+        }
+        
+        .cta-section {
+            padding: 5rem 0;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            text-align: center;
+        }
+        
+        .cta-section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .cta-section p {
+            font-size: 1.25rem;
+            margin-bottom: 2rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .btn-light {
+            color: var(--primary);
+            background-color: white;
+            border-color: white;
+            padding: 1rem 2.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-light:hover {
+            background-color: #f8f9fa;
+            color: var(--primary-dark);
+        }
+        
+        footer {
+            background-color: var(--dark);
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        
+        .footer-content {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+        
+        .footer-column {
+            flex: 1;
+            min-width: 200px;
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        
+        .footer-column h4 {
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
+        }
+        
+        .footer-column ul {
+            list-style: none;
+        }
+        
+        .footer-column ul li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .footer-column a {
+            color: #adb5bd;
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        
+        .footer-column a:hover {
+            color: white;
+        }
+        
+        .copyright {
+            padding-top: 2rem;
+            border-top: 1px solid #343a40;
+        }
+        
+        @media (max-width: 768px) {
+            .pricing-grid {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .pricing-card {
+                margin-bottom: 2rem;
+            }
+            
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .pricing-header h2,
+            .features-header h2, 
+            .cta-section h2 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>
+                <img src="img/logo2pdv.png" alt="Logo EXTREME PDV" height="50">
+            </i> EXTREME PDV</h1>
+            <p>Sistema de Ponto de Venda Profissional e Completo</p>
+        </div>
+    </header>
+    
+    <section class="hero">
+        <div class="container">
+            <h1>Transforme sua Gestão de Vendas</h1>
+            <p>O EXTREME PDV é uma solução completa para gerenciar seu negócio com eficiência, agilidade e segurança. Nosso sistema foi desenvolvido para otimizar operações e aumentar seus resultados.</p>
+        </div>
+    </section>
+
+    <section class="pricing-section" id="planos">
+        <div class="container">
+            <div class="pricing-header">
+                <h2>Escolha o Plano Ideal para seu Negócio</h2>
+                <p>Oferecemos opções flexíveis para atender desde pequenos comércios até grandes estabelecimentos. Encontre o plano que melhor se adapta às necessidades da sua empresa.</p>
+            </div>
+            
+            <div class="pricing-grid">
+                <!-- Plano Básico -->
+                <div class="pricing-card">
+                    <div class="pricing-header-card pricing-header-basic">
+                        <h3>Básico</h3>
+                        <div class="pricing-price">R$69,99</div>
+                        <div class="pricing-period">por mês</div>
+                    </div>
+                    <div class="pricing-body">
+                        <ul class="features-list">
+                            <li><i class="fas fa-check-circle"></i> Controle de Caixa Completo</li>
+                            <li><i class="fas fa-check-circle"></i> 10 - Cadastro de Produtos</li>
+                            <li><i class="fas fa-check-circle"></i> 10 - Cadastro de Clientes</li>
+                            <li><i class="fas fa-check-circle"></i> Vendas Simples e Rápidas</li>
+                            <li><i class="fas fa-check-circle"></i> Controle de Estoque Básico</li>
+                            <li><i class="fas fa-check-circle"></i> 1 Usuário</li>
+                            <li class="feature-unavailable"><i class="fas fa-times-circle"></i> Comandas</li>
+                            <li class="feature-unavailable"><i class="fas fa-times-circle"></i> Relatórios Avançados</li>
+                            <li class="feature-unavailable"><i class="fas fa-times-circle"></i> Gestão de Fornecedores</li>
+                            <li class="feature-unavailable"><i class="fas fa-times-circle"></i> Múltiplos Terminais</li>
+                        </ul>
+                    </div>
+                    <div class="pricing-footer">
+                        <a href="#contato" class="btn btn-outline-primary">Começar Agora</a>
+                    </div>
+                </div>
+                
+                <!-- Plano Standard -->
+                <div class="pricing-card card-popular">
+                    <div class="popular-badge">MAIS POPULAR</div>
+                    <div class="pricing-header-card pricing-header-standard">
+                        <h3>Standard</h3>
+                        <div class="pricing-price">R$99,99</div>
+                        <div class="pricing-period">por mês</div>
+                    </div>
+                    <div class="pricing-body">
+                        <ul class="features-list">
+                            <li><i class="fas fa-check-circle"></i> Controle de Caixa Completo</li>
+                            <li><i class="fas fa-check-circle"></i> 30 - Cadastro de Produtos</li>
+                            <li><i class="fas fa-check-circle"></i> 30 - Cadastro de Clientes</li>
+                            <li><i class="fas fa-check-circle"></i> Vendas Simples e Rápidas</li>
+                            <li><i class="fas fa-check-circle"></i> Controle de Estoque Avançado</li>
+                            <li><i class="fas fa-check-circle"></i> 5 Usuários</li>
+                            <li><i class="fas fa-check-circle"></i> Sistema de Comandas</li>
+                            <li><i class="fas fa-check-circle"></i> Relatórios Básicos</li>
+                            <li><i class="fas fa-check-circle"></i> Gestão de Fornecedores</li>
+                            <li><i class="fas fa-times-circle"></i> Múltiplos Terminais</li>
+                        </ul>
+                    </div>
+                    <div class="pricing-footer">
+                        <a href="#contato" class="btn btn-primary">Começar Agora</a>
+                    </div>
+                </div>
+                
+                <!-- Plano Premium -->
+                <div class="pricing-card">
+                    <div class="pricing-header-card pricing-header-premium">
+                        <h3>Premium</h3>
+                        <div class="pricing-price">R$169,99</div>
+                        <div class="pricing-period">por mês</div>
+                    </div>
+                    <div class="pricing-body">
+                        <ul class="features-list">
+                            <li><i class="fas fa-check-circle"></i> Controle de Caixa Completo</li>
+                            <li><i class="fas fa-check-circle"></i> Ilimitado - Cadastro de Produtos</li>
+                            <li><i class="fas fa-check-circle"></i> Ilimitado - Cadastro de Clientes</li>
+                            <li><i class="fas fa-check-circle"></i> Vendas Simples e Rápidas</li>
+                            <li><i class="fas fa-check-circle"></i> Controle de Estoque Avançado</li>
+                            <li><i class="fas fa-check-circle"></i> Usuários Ilimitados</li>
+                            <li><i class="fas fa-check-circle"></i> Sistema de Comandas Completo</li>
+                            <li><i class="fas fa-check-circle"></i> Relatórios Avançados</li>
+                            <li><i class="fas fa-check-circle"></i> Gestão de Fornecedores</li>
+                            <li><i class="fas fa-check-circle"></i> Múltiplos Terminais</li>
+                            <li><i class="fas fa-check-circle"></i> Gestão Financeira Avançada</li>
+                            <li><i class="fas fa-check-circle"></i> Controle de Lucratividade</li>
+                        </ul>
+                    </div>
+                    <div class="pricing-footer">
+                        <a href="#contato" class="btn btn-outline-purple">Começar Agora</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features-section" id="funcionalidades">
+        <div class="container">
+            <div class="features-header">
+                <h2>Funcionalidades Poderosas</h2>
+                <p>Conheça as principais características que tornam o EXTREME PDV o sistema ideal para seu negócio.</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-cash-register"></i>
+                    <h3>Controle de Caixa</h3>
+                    <p>Gerencie aberturas, fechamentos, sangrias e suprimentos com facilidade. Mantenha seu caixa organizado e evite perdas financeiras.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-box"></i>
+                    <h3>Gestão de Produtos</h3>
+                    <p>Cadastre, edite e organize seu catálogo de produtos com categorias, códigos de barras e preços flexíveis.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-users"></i>
+                    <h3>Cadastro de Clientes</h3>
+                    <p>Mantenha seus clientes organizados com informações completas para melhorar o relacionamento e oferecer condições especiais.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-shopping-cart"></i>
+                    <h3>PDV Intuitivo</h3>
+                    <p>Interface de vendas rápida e intuitiva, otimizada para toque, permitindo finalizar vendas em poucos cliques.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-clipboard-list"></i>
+                    <h3>Sistema de Comandas</h3>
+                    <p>Ideal para bares e restaurantes. Gerencie mesas, pedidos e pagamentos parciais com facilidade.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-warehouse"></i>
+                    <h3>Controle de Estoque</h3>
+                    <p>Gerenciamento completo do estoque com alertas de níveis baixos, movimentações e histórico completo.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-truck"></i>
+                    <h3>Gestão de Fornecedores</h3>
+                    <p>Cadastre seus fornecedores e gerencie compras, mantendo histórico completo de todas as transações.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-chart-bar"></i>
+                    <h3>Relatórios Avançados</h3>
+                    <p>Tome decisões baseadas em dados com relatórios detalhados de vendas, produtos, estoque e lucratividade.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <i class="fas fa-user-shield"></i>
+                    <h3>Controle de Acesso</h3>
+                    <p>Defina permissões para cada usuário do sistema, garantindo segurança e controle sobre as operações.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta-section" id="contato">
+        <div class="container">
+            <h2>Pronto para Transformar seu Negócio?</h2>
+            <p>Entre em contato conosco hoje mesmo e descubra como o EXTREME PDV pode otimizar suas operações e aumentar seus resultados.</p>
+            <a href="https://wa.me/5594981709809?text=Gostaria%20de%20saber%20mais%20sobre%20o%20Sistema%20de%20PDV!" target="_blank"
+            class="btn btn-light">Solicitar Demonstração</a>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+<!--             <div class="footer-content">
+                <div class="footer-column">
+                    <h4>EXTREME PDV</h4>
+                    <p>Sistema completo de ponto de venda para transformar a gestão do seu negócio.</p>
+                </div>
+                
+                <div class="footer-column">
+                    <h4>Links Rápidos</h4>
+                    <ul>
+                        <li><a href="#planos">Planos</a></li>
+                        <li><a href="#funcionalidades">Funcionalidades</a></li>
+                        <li><a href="#contato">Contato</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-column">
+                    <h4>Suporte</h4>
+                    <ul>
+                        <li><a href="#">Central de Ajuda</a></li>
+                        <li><a href="#">Documentação</a></li>
+                        <li><a href="#">Treinamentos</a></li>
+                    </ul>
+                </div> -->
+                
+                <div class="footer-column">
+                    <h4>Contato</h4>
+                    <ul>
+                        <li><a href="tel:+5594981709809"><i class="fas fa-phone-alt"></i> (94) 98170-9809</a></li>
+                        <li><a href="mailto:maurocarlos.ti@gmail.com"><i class="fas fa-envelope"></i> maurocarlos.ti@gmail.com</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="copyright">
+                <p>&copy; 2025 EXTREME PDV - Todos os direitos reservados.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

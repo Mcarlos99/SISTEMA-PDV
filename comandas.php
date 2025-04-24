@@ -198,6 +198,12 @@ include 'header.php';
                         <span class="d-none d-sm-inline">Fechar Comanda</span>
                         <span class="d-inline d-sm-none">Fechar</span>
                     </button>
+                           <!-- ADICIONAR O BOTÃO DE IMPRESSÃO AQUI -->
+                    <button type="button" class="btn btn-secondary mb-2 mb-sm-0" id="btnImprimirComanda">
+                        <i class="fas fa-print me-1"></i>
+                        <span class="d-none d-sm-inline">Imprimir Comanda</span>
+                        <span class="d-inline d-sm-none">Imprimir</span>
+                    </button>
                     <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalCancelarComanda">
                         <i class="fas fa-times-circle me-1"></i>
                         <span class="d-none d-sm-inline">Cancelar Comanda</span>
@@ -1329,6 +1335,258 @@ include 'header.php';
                 modalElement.modal('show');
             }
         }
+
+        // impressao da comanda
+        // ADICIONAR O CÓDIGO DE IMPRESSÃO AQUI
+        // Manipulador para o botão de impressão da comanda
+        $('#btnImprimirComanda').click(function() {
+            // Busca os dados da empresa do sistema antes de imprimir
+            $.ajax({
+                url: 'ajax_dados_empresa.php',
+                type: 'GET',
+                dataType: 'json',
+                success: function(dadosEmpresa) {
+                    // Cria uma nova janela para impressão com os dados obtidos
+                    var conteudoImpressao = prepararConteudoImpressao(dadosEmpresa);
+                    var janelaImpressao = window.open('', '_blank', 'height=600,width=800');
+                    
+                    janelaImpressao.document.write(conteudoImpressao);
+                    janelaImpressao.document.close();
+                    
+                    // Aguarda o carregamento completo antes de imprimir
+                    janelaImpressao.onload = function() {
+                        janelaImpressao.focus();
+                        janelaImpressao.print();
+                        // Fecha a janela após a impressão (opcional, pode ser comentado)
+                        // janelaImpressao.close();
+                    };
+                },
+                error: function() {
+                    // Se não conseguir obter os dados da empresa, usa valores padrão
+                    var dadosEmpresa = {
+                        nome: 'EXTREME PDV',
+                        fantasia: 'EXTREME HOTEL',
+                        endereco: '',
+                        cidade: '',
+                        estado: '',
+                        cep: '',
+                        telefone: '',
+                        cpf_cnpj: '',
+                        email: ''
+                    };
+                    var conteudoImpressao = prepararConteudoImpressao(dadosEmpresa);
+                    var janelaImpressao = window.open('', '_blank', 'height=600,width=800');
+                    
+                    janelaImpressao.document.write(conteudoImpressao);
+                    janelaImpressao.document.close();
+                    
+                    janelaImpressao.onload = function() {
+                        janelaImpressao.focus();
+                        janelaImpressao.print();
+                    };
+                }
+            });
+        });
+        
+        // Função para preparar o conteúdo a ser impresso
+        function prepararConteudoImpressao(dadosEmpresa) {
+            // Obter todos os dados necessários da página
+            var comandaId = '<?php echo $comanda["id"] ?? ""; ?>';
+            var dataCriacao = '<?php echo $comanda["data_abertura_formatada"] ?? ""; ?>';
+            var nomeCliente = '<?php echo esc($comanda["cliente_nome"] ?? ""); ?>';
+            var valorTotal = '<?php echo formatarDinheiro($comanda["valor_total"] ?? 0); ?>';
+            var observacoes = '<?php echo esc($comanda["observacoes"] ?? ""); ?>';
+            
+            // Definir dados da empresa
+            dadosEmpresa = dadosEmpresa || {
+                nome: 'EXTREME PDV',
+                fantasia: 'Hotel Rio',
+                endereco: 'Rua Raimundo Veridiano Cardoso, 1152 - Bela Vista',
+                cidade: 'Tucuruí',
+                estado: 'PA',
+                cep: '',
+                telefone: '(94) 91879-6546',
+                cpf_cnpj: '07.081.608/0001-37',
+                email: 'hotelriotucurui@gmail.com'
+            };
+            
+            // Preparar endereço completo
+            var enderecoCompleto = [];
+            if (dadosEmpresa.endereco) enderecoCompleto.push(dadosEmpresa.endereco);
+            
+            var cidadeEstado = [];
+            if (dadosEmpresa.cidade) cidadeEstado.push(dadosEmpresa.cidade);
+            if (dadosEmpresa.estado) cidadeEstado.push(dadosEmpresa.estado);
+            if (cidadeEstado.length > 0) enderecoCompleto.push(cidadeEstado.join(' - '));
+            
+            if (dadosEmpresa.cep) enderecoCompleto.push('CEP: ' + dadosEmpresa.cep);
+            
+            // Preparar HTML para impressão
+            var html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Comanda #${comandaId}</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 20px;
+                        font-size: 14px;
+                    }
+                    .cabecalho {
+                        text-align: center;
+                        margin-bottom: 20px;
+                        border-bottom: 1px solid #ccc;
+                        padding-bottom: 10px;
+                    }
+                    .cabecalho h1 {
+                        margin: 0 0 5px 0;
+                        font-size: 22px;
+                    }
+                    .cabecalho h2 {
+                        margin: 0 0 10px 0;
+                        font-size: 18px;
+                        font-weight: normal;
+                    }
+                    .cabecalho p {
+                        margin: 3px 0;
+                        font-size: 12px;
+                    }
+                    .info-empresa {
+                        font-size: 12px;
+                        margin-bottom: 10px;
+                    }
+                    .info-comanda {
+                        margin-bottom: 20px;
+                    }
+                    .info-comanda p {
+                        margin: 5px 0;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 30px;
+                    }
+                    th, td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    th {
+                        background-color: #f2f2f2;
+                    }
+                    .totais {
+                        margin-top: 20px;
+                        text-align: right;
+                    }
+                    .assinatura {
+                        margin-top: 50px;
+                        text-align: center;
+                    }
+                    .linha-assinatura {
+                        border-top: 1px solid #000;
+                        width: 70%;
+                        margin: 10px auto;
+                    }
+                    .observacoes {
+                        margin-top: 20px;
+                        font-style: italic;
+                    }
+                    @media print {
+                        .no-print {
+                            display: none;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="cabecalho">
+                    <h1>${dadosEmpresa.fantasia || dadosEmpresa.nome}</h1>
+                    ${dadosEmpresa.nome && dadosEmpresa.fantasia && dadosEmpresa.nome !== dadosEmpresa.fantasia ? `<h2>${dadosEmpresa.nome}</h2>` : ''}
+                    
+                    <div class="info-empresa">
+                        ${enderecoCompleto.length > 0 ? `<p>${enderecoCompleto.join(' - ')}</p>` : ''}
+                        ${dadosEmpresa.telefone ? `<p>Telefone: ${dadosEmpresa.telefone}</p>` : ''}
+                        ${dadosEmpresa.email ? `<p>E-mail: ${dadosEmpresa.email}</p>` : ''}
+                        ${dadosEmpresa.cpf_cnpj ? `<p>${dadosEmpresa.cpf_cnpj.length > 14 ? 'CNPJ' : 'CPF'}: ${dadosEmpresa.cpf_cnpj}</p>` : ''}
+                    </div>
+                    
+                    <h3>Comanda #${comandaId}</h3>
+                </div>
+                
+                <div class="info-comanda">
+                    <p><strong>Data/Hora:</strong> ${dataCriacao}</p>
+                    <p><strong>Cliente:</strong> ${nomeCliente}</p>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Produto</th>
+                            <th>Qtd</th>
+                            <th>Preço Unit.</th>
+                            <th>Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            
+            // Adicionar cada item da comanda na tabela
+            var produtos = <?php echo json_encode($produtos_comanda ?? []); ?>;
+            if (produtos.length > 0) {
+                produtos.forEach(function(item) {
+                    html += `
+                        <tr>
+                            <td>${item.produto_codigo}</td>
+                            <td>${item.produto_nome}</td>
+                            <td>${item.quantidade}</td>
+                            <td>${formatarDinheiro(item.preco_unitario)}</td>
+                            <td>${formatarDinheiro(item.subtotal)}</td>
+                        </tr>`;
+                });
+            } else {
+                html += `
+                    <tr>
+                        <td colspan="5" style="text-align: center;">Nenhum produto adicionado</td>
+                    </tr>`;
+            }
+            
+            // Adicionar totalização e área para assinatura
+            html += `
+                    </tbody>
+                </table>
+                
+                <div class="totais">
+                    <h3>Total: ${valorTotal}</h3>
+                </div>`;
+                
+            // Adicionar observações se existirem
+            if (observacoes) {
+                html += `
+                <div class="observacoes">
+                    <p><strong>Observações:</strong> ${observacoes}</p>
+                </div>`;
+            }
+            
+            // Adicionar linha para assinatura
+            html += `
+                <div class="assinatura">
+                    <div class="linha-assinatura"></div>
+                    <p>Assinatura do Cliente</p>
+                </div>
+                
+                <div class="no-print" style="margin-top: 20px; text-align: center;">
+                    <button onclick="window.print();" style="padding: 10px 20px; cursor: pointer;">Imprimir</button>
+                    <button onclick="window.close();" style="padding: 10px 20px; margin-left: 10px; cursor: pointer;">Fechar</button>
+                </div>
+            </body>
+            </html>`;
+            
+            return html;
+        }
+
     });
 </script>
 

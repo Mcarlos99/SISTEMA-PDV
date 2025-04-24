@@ -17,6 +17,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($_POST['senha'] != $_POST['confirmar_senha']) {
             alerta('As senhas não coincidem!', 'danger');
         } else {
+
+// Verificar limite de usuários antes de adicionar
+// Primeiro contar quantos usuários ativos existem
+$stmt = $pdo->query("SELECT COUNT(*) as total FROM usuarios WHERE ativo = TRUE");
+$total_usuarios_atual = $stmt->fetch()['total'];
+
+// Buscar informações do plano atual (ajuste a consulta conforme sua estrutura)
+$stmt = $pdo->query("
+    SELECT 
+        COALESCE(ep.limite_usuarios_personalizado, p.limite_usuarios) as limite_usuarios
+    FROM 
+        configuracoes_empresa ce
+        JOIN empresa_planos ep ON ce.id = ep.empresa_id
+        JOIN planos p ON ep.plano_id = p.id
+    WHERE 
+        ep.ativo = TRUE
+    LIMIT 1
+");
+$plano = $stmt->fetch();
+
+// Verificar se o limite foi atingido
+if ($plano && $plano['limite_usuarios'] > 0 && $total_usuarios_atual >= $plano['limite_usuarios']) {
+    alerta('Limite de ' . $plano['limite_usuarios'] . ' usuários do plano atingido. Entre em contato com o administrador do sistema.', 'danger');
+    header('Location: usuarios.php');
+    exit;
+}
+            //TERMINA O LIMITE DE USUARIOS
+
             $dados = [
                 'nome' => $_POST['nome'],
                 'usuario' => $_POST['usuario'],
