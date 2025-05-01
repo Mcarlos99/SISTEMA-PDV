@@ -8,6 +8,12 @@
 require_once 'config.php';
 verificarLogin();
 
+// Verificar se o usuário está logado
+if (!isset($_SESSION['usuario_id'])) {
+    header('Location: login.php');
+    exit;
+}
+
 // Inicializar objetos
 $venda_obj = new Venda($pdo);
 $caixa_obj = new Caixa($pdo);
@@ -16,12 +22,18 @@ $cliente_obj = new Cliente($pdo);
 // Verificar se existe um caixa aberto
 $caixa_aberto = $caixa_obj->verificarCaixaAberto();
 
+// Processar ações
+$acao = isset($_GET['acao']) ? $_GET['acao'] : '';
+
 // Sistema de permissões simplificado
 $usuario_permissoes = $_SESSION['usuario_permissoes'] ?? [];
 $pode_criar = true;   // Todos podem criar vendas
 $pode_ver = true;     // Todos podem ver detalhes
 $pode_cancelar = true;  // Todos podem cancelar vendas
 $pode_relatorios = true; // Todos podem gerar relatórios
+
+// Verificação específica para administrador e gerente - usando o mesmo formato do header.php
+$pode_editar = in_array($_SESSION['usuario_nivel'], ['admin', 'gerente']);
 
 // Função auxiliar para verificar permissões
 if (!function_exists('verificarPermissao')) {
@@ -35,9 +47,6 @@ if (!function_exists('verificarPermissao')) {
         return in_array($permissao, $usuario_permissoes);
     }
 }
-
-// Processar ações
-$acao = isset($_GET['acao']) ? $_GET['acao'] : '';
 
 // Cancelar venda
 if ($acao == 'cancelar' && isset($_POST['id'])) {
@@ -77,6 +86,157 @@ if ($acao == 'cancelar' && isset($_POST['id'])) {
     
     // Redirecionar para evitar reenvio do formulário
     header('Location: vendas.php');
+    exit;
+}
+
+// // Editar venda
+// if ($acao == 'editar' && isset($_POST['id'])) {
+//     if (!in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])) {
+//         alerta('Você não tem permissão para editar vendas!', 'danger');
+//         header('Location: vendas.php');
+//         exit;
+//     }
+    
+//     $id = intval($_POST['id']);
+//     $forma_pagamento = $_POST['forma_pagamento'] ?? '';
+//     $observacoes = $_POST['observacoes'] ?? '';
+//     $desconto = isset($_POST['desconto']) ? floatval(str_replace(',', '.', $_POST['desconto'])) : 0;
+    
+//     try {
+//      //   if (!$caixa_aberto) {
+//     //        throw new Exception('É necessário que um caixa esteja aberto para editar uma venda!');
+//     //    }
+        
+//         // Obter venda atual para verificar se houve mudança
+//         $venda_atual = $venda_obj->buscarPorId($id);
+        
+//         if (!$venda_atual) {
+//             throw new Exception('Venda não encontrada!');
+//         }
+        
+//         if ($venda_atual['status'] != 'finalizada') {
+//             throw new Exception('Apenas vendas finalizadas podem ser editadas!');
+//         }
+        
+//         // Editar a venda no banco de dados
+//         $sql = "UPDATE vendas SET forma_pagamento = ?, observacoes = ?, desconto = ? WHERE id = ?";
+//         $stmt = $pdo->prepare($sql);
+//         $resultado = $stmt->execute([$forma_pagamento, $observacoes, $desconto, $id]);
+        
+//         if ($resultado) {
+//             // Registrar histórico
+//             $sql = "
+//                 INSERT INTO venda_historico (
+//                     venda_id,
+//                     tipo,
+//                     descricao,
+//                     usuario_id,
+//                     data_registro
+//                 ) VALUES (?, ?, ?, ?, NOW())
+//             ";
+            
+//             $descricao = 'Venda editada por ' . $_SESSION['usuario_nome'] . 
+//                         '. Alterações: Forma de pagamento: ' . 
+//                         $venda_atual['forma_pagamento'] . ' -> ' . $forma_pagamento . 
+//                         ', Desconto: ' . formatarDinheiro($venda_atual['desconto']) . 
+//                         ' -> ' . formatarDinheiro($desconto);
+            
+//             $stmt = $pdo->prepare($sql);
+//             $stmt->execute([
+//                 $id,
+//                 'edicao',
+//                 $descricao,
+//                 $_SESSION['usuario_id']
+//             ]);
+            
+//             // Registrar log de atividade
+//             if (function_exists('registrarLog')) {
+//                 registrarLog('Editou a venda #' . $id . ' (Forma pagto: ' . 
+//                             $venda_atual['forma_pagamento'] . ' -> ' . $forma_pagamento . 
+//                             ', Desconto: ' . formatarDinheiro($venda_atual['desconto']) . 
+//                             ' -> ' . formatarDinheiro($desconto) . ')');
+//             }
+            
+//             alerta('Venda #' . $id . ' editada com sucesso!', 'success');
+//         } else {
+//             throw new Exception('Erro ao editar venda!');
+//         }
+//     } catch (Exception $e) {
+//         alerta($e->getMessage(), 'danger');
+//     }
+    
+//     // Redirecionar para evitar reenvio do formulário
+//     header('Location: vendas.php?id=' . $id);
+//     exit;
+// }
+
+// Editar venda
+if ($acao == 'editar' && isset($_POST['id'])) {
+    if (!in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])) {
+        alerta('Você não tem permissão para editar vendas!', 'danger');
+        header('Location: vendas.php');
+        exit;
+    }
+    
+    $id = intval($_POST['id']);
+    $forma_pagamento = $_POST['forma_pagamento'] ?? '';
+    $observacoes = $_POST['observacoes'] ?? '';
+    $desconto = isset($_POST['desconto']) ? floatval(str_replace(',', '.', str_replace('.', '', $_POST['desconto']))) : 0;
+    
+    try {
+        // Obter venda atual para verificar se houve mudança
+        $venda_atual = $venda_obj->buscarPorId($id);
+        
+        if (!$venda_atual) {
+            throw new Exception('Venda não encontrada!');
+        }
+        
+        if ($venda_atual['status'] != 'finalizada') {
+            throw new Exception('Apenas vendas finalizadas podem ser editadas!');
+        }
+        
+        // Calcular o valor total com base nos itens
+        $itens = $venda_obj->buscarItens($id);
+        $subtotal = 0;
+        
+        foreach ($itens as $item) {
+            $subtotal += $item['quantidade'] * $item['preco_unitario'];
+        }
+        
+        // O valor total é o subtotal menos o desconto
+        $valor_total = $subtotal - $desconto;
+        
+        // Prevenir valor total negativo
+        if ($valor_total < 0) {
+            throw new Exception('O desconto não pode ser maior que o subtotal da venda!');
+        }
+        
+        // Editar a venda no banco de dados, incluindo o valor_total
+        $sql = "UPDATE vendas SET forma_pagamento = ?, observacoes = ?, desconto = ?, valor_total = ? WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        $resultado = $stmt->execute([$forma_pagamento, $observacoes, $desconto, $valor_total, $id]);
+        
+        if ($resultado) {
+            // Registrar log de atividade (se existir essa função)
+            if (function_exists('registrarLog')) {
+                registrarLog('Editou a venda #' . $id . ' (Forma pagto: ' . 
+                            $venda_atual['forma_pagamento'] . ' -> ' . $forma_pagamento . 
+                            ', Desconto: ' . formatarDinheiro($venda_atual['desconto']) . 
+                            ' -> ' . formatarDinheiro($desconto) . 
+                            ', Valor total: ' . formatarDinheiro($venda_atual['valor_total']) . 
+                            ' -> ' . formatarDinheiro($valor_total) . ')');
+            }
+            
+            alerta('Venda #' . $id . ' editada com sucesso!', 'success');
+        } else {
+            throw new Exception('Erro ao editar venda!');
+        }
+    } catch (Exception $e) {
+        alerta($e->getMessage(), 'danger');
+    }
+    
+    // Redirecionar para evitar reenvio do formulário
+    header('Location: vendas.php?id=' . $id);
     exit;
 }
 
@@ -159,7 +319,7 @@ if ($acao == 'exportar_csv' && isset($_POST['data_inicio'], $_POST['data_fim']))
         exit;
     }
 }
-
+// 2
 // Verificar se está visualizando uma venda específica
 $venda_detalhes = null;
 $itens_venda = [];
@@ -407,7 +567,7 @@ include 'header.php';
             <?php endif; ?>
         </div>
     </div>
-    
+    <!-- 3 -->
     <?php if ($venda_detalhes): ?>
         <!-- Detalhes da Venda -->
         <div class="row mb-4">
@@ -650,9 +810,9 @@ include 'header.php';
                 </div>
             </div>
         </div>
-        
-        <!-- Histórico da Venda -->
-        <?php if (!empty($historico_venda)): ?>
+        <!-- 4 -->
+<!-- Histórico da Venda -->
+<?php if (!empty($historico_venda)): ?>
             <div class="card mb-4">
                 <div class="card-header bg-info text-white">
                     <h5 class="card-title mb-0">
@@ -665,8 +825,8 @@ include 'header.php';
                         <?php foreach ($historico_venda as $h): ?>
                             <?php if (!is_array($h)) continue; ?>
                             <div class="timeline-item">
-                                <div class="timeline-badge <?php echo isset($h['tipo']) && $h['tipo'] == 'cancelamento' ? 'bg-danger' : 'bg-primary'; ?>">
-                                    <i class="fas <?php echo isset($h['tipo']) && $h['tipo'] == 'cancelamento' ? 'fa-times' : 'fa-check'; ?>"></i>
+                                <div class="timeline-badge <?php echo isset($h['tipo']) && $h['tipo'] == 'cancelamento' ? 'bg-danger' : (isset($h['tipo']) && $h['tipo'] == 'edicao' ? 'bg-warning' : 'bg-primary'); ?>">
+                                    <i class="fas <?php echo isset($h['tipo']) && $h['tipo'] == 'cancelamento' ? 'fa-times' : (isset($h['tipo']) && $h['tipo'] == 'edicao' ? 'fa-edit' : 'fa-check'); ?>"></i>
                                 </div>
                                 <div class="timeline-content">
                                     <div class="timeline-header">
@@ -699,15 +859,92 @@ include 'header.php';
         <?php endif; ?>
         
         <!-- Botões de Ação -->
-        <?php if (isset($venda_detalhes['status']) && $venda_detalhes['status'] == 'finalizada' && $pode_cancelar && $caixa_aberto): ?>
+        <?php if (isset($venda_detalhes['status']) && $venda_detalhes['status'] == 'finalizada'): ?>
+    <div class="d-flex justify-content-end mb-4 gap-2">
+        <?php if (in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])): ?>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarVenda">
+                <i class="fas fa-edit me-1"></i>
+                Editar Venda
+            </button>
+        <?php endif; ?>
+        
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalCancelarVenda">
+            <i class="fas fa-ban me-1"></i>
+            Cancelar Venda
+        </button>
+    </div>
+            
+            <!-- Modal Editar Venda -->
+            <div class="modal fade" id="modalEditarVenda" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit me-2"></i>
+                    Editar Venda
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="vendas.php?acao=editar" method="post">
+                <input type="hidden" name="id" value="<?php echo $venda_detalhes['id']; ?>">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Atenção! Você está editando a venda <strong>#<?php echo $venda_detalhes['id']; ?></strong>.
+                        Esta ação será registrada no histórico.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="forma_pagamento" class="form-label">Forma de Pagamento:</label>
+                        <select class="form-select" id="forma_pagamento" name="forma_pagamento" required>
+                            <?php foreach ($formas_pagamento as $key => $nome): ?>
+                                <option value="<?php echo $key; ?>" <?php echo ($venda_detalhes['forma_pagamento'] == $key) ? 'selected' : ''; ?>>
+                                    <?php echo $nome; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="desconto" class="form-label">Desconto (R$):</label>
+                        <input type="text" class="form-control money-mask" id="desconto" name="desconto" 
+                               value="<?php echo number_format($venda_detalhes['desconto'] ?? 0, 2, ',', '.'); ?>">
+                        <div class="form-text">
+                            <small>Valor do subtotal: <?php echo formatarDinheiro($subtotal); ?></small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="observacoes" class="form-label">Observações:</label>
+                        <textarea class="form-control" id="observacoes" name="observacoes" rows="3"><?php echo esc($venda_detalhes['observacoes'] ?? ''); ?></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>
+                        Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+        <?php elseif (isset($venda_detalhes['status']) && $venda_detalhes['status'] == 'finalizada' && $pode_cancelar && $caixa_aberto): ?>
+            <!-- Botão apenas de cancelar (sem edição) se o usuário não tem permissão de edição -->
             <div class="d-flex justify-content-end mb-4">
                 <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalCancelarVenda">
                     <i class="fas fa-ban me-1"></i>
                     Cancelar Venda
                 </button>
             </div>
-            
-            <!-- Modal Cancelar Venda -->
+        <?php endif; ?>
+        
+        <!-- Modal Cancelar Venda -->
+        <?php if (isset($venda_detalhes['status']) && $venda_detalhes['status'] == 'finalizada' && $pode_cancelar && $caixa_aberto): ?>
             <div class="modal fade" id="modalCancelarVenda" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
@@ -758,9 +995,9 @@ include 'header.php';
             </div>
         <?php endif; ?>
     <?php else: ?>
-
-        <!-- Filtros de Pesquisa -->
-        <div class="card mb-4">
+        <!-- 5 -->
+    <!-- Filtros de Pesquisa -->
+    <div class="card mb-4">
             <div class="card-header bg-light">
                 <a class="text-decoration-none text-dark d-block" data-bs-toggle="collapse" href="#collapseFilter" role="button" aria-expanded="<?php echo !empty($filtros) ? 'true' : 'false'; ?>">
                     <div class="d-flex justify-content-between align-items-center">
@@ -1025,6 +1262,7 @@ include 'header.php';
                                                 </span>
                                             <?php endif; ?>
                                         </td>
+                                        <!-- 6 -->
                                         <td class="text-center">
                                             <div class="btn-group">
                                                 <?php if ($pode_ver): ?>
@@ -1037,6 +1275,17 @@ include 'header.php';
                                                     </a>
                                                 <?php endif; ?>
                                                 
+<!-- Botão Editar - apenas para administrador e gerente -->
+<?php if ($status == 'finalizada' && in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])): ?>
+    <a href="vendas.php?id=<?php echo $id; ?>" 
+       class="btn btn-sm btn-outline-warning" 
+       data-bs-toggle="tooltip" 
+       title="Editar"
+       style="display: inline-block !important;">
+        <i class="fas fa-edit"></i>
+    </a>
+<?php endif; ?>
+                                                
                                                 <a href="comprovante.php?id=<?php echo $id; ?>" 
                                                    target="_blank" 
                                                    class="btn btn-sm btn-outline-info" 
@@ -1045,16 +1294,17 @@ include 'header.php';
                                                    style="display: inline-block !important;">
                                                     <i class="fas fa-print"></i>
                                                 </a>
-                                                
-                                                <?php if ($status == 'finalizada' && $pode_cancelar && $caixa_aberto): ?>
-                                                    <button type="button" 
-                                                            class="btn btn-sm btn-outline-danger btn-cancelar-venda" 
-                                                            data-id="<?php echo $id; ?>"
-                                                            data-bs-toggle="tooltip" 
-                                                            title="Cancelar"
-                                                            style="display: inline-block !important;">
-                                                        <i class="fas fa-ban"></i>
-                                                    </button>
+
+                                                <!-- Botão Cancelar - apenas admin/gerente -->
+                                                <?php if ($status == 'finalizada' && in_array($_SESSION['usuario_nivel'], ['admin', 'gerente'])): ?>
+    <button type="button" 
+            class="btn btn-sm btn-outline-danger btn-cancelar-venda" 
+            data-id="<?php echo $id; ?>"
+            data-bs-toggle="tooltip" 
+            title="Cancelar"
+            style="display: inline-block !important;">
+        <i class="fas fa-ban"></i>
+    </button>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -1376,6 +1626,17 @@ include 'header.php';
 </style>
 
 <script>
+    // Máscara para campo de dinheiro
+if (document.getElementById('desconto')) {
+    var descontoInput = document.getElementById('desconto');
+    descontoInput.addEventListener('input', function (e) {
+        var value = e.target.value.replace(/\D/g, '');
+        value = (parseInt(value) / 100).toFixed(2);
+        value = value.replace('.', ',');
+        value = value.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        e.target.value = value;
+    });
+}
 document.addEventListener('DOMContentLoaded', function() {
     // Inicializar tooltips
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
