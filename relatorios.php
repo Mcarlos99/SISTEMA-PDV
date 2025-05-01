@@ -149,8 +149,8 @@ include 'header.php';
         </div>
     </div>
     
-    <!-- Filtros de Relatório -->
-    <div class="card mb-4">
+    <!-- Filtros de Relatório - adicionar ID "filtros-relatorio" -->
+    <div class="card mb-4" id="filtros-relatorio">
         <div class="card-header bg-primary text-white">
             <h5 class="card-title mb-0">
                 <i class="fas fa-filter me-2"></i>
@@ -218,6 +218,12 @@ include 'header.php';
     <i class="fas fa-download me-1"></i>
     Exportar CSV
 </a>
+    <!-- Novo botão de impressão -->
+    <button type="button" class="btn btn-sm btn-primary" onclick="window.print()">
+        <i class="fas fa-print me-1"></i>
+        Imprimir Relatório
+    </button>
+
             </div>
         </div>
         <div class="card-body">
@@ -935,6 +941,101 @@ $('#tipo').change(function() {
 </script>
 
 <style>
+/* Estilos para impressão */
+@media print {
+    /* Ocultar elementos que não devem aparecer na impressão */
+    .navbar, 
+    .sidebar, 
+    footer, 
+    .breadcrumb, 
+    .card-header button,
+    .btn,
+    .dataTables_length,
+    .dataTables_filter,
+    .dataTables_paginate,
+    .dataTables_info {
+        display: none !important;
+    }
+        /* Ocultar o card de filtros usando ID */
+        #filtros-relatorio {
+        display: none !important;
+    
+    /* Ocultar especificamente o card de filtros */
+    .card .card-header h5:contains("Filtros do Relatório"),
+    .card .card-header:contains("Filtros"),
+    #tipo, 
+    form[action="relatorios.php"],
+    .card.mb-4,
+    div.card:nth-of-type(1) {
+        display: none !important;
+    }
+    
+    /* Garantir que o conteúdo principal ocupe toda a largura */
+    .content {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    
+    /* Ajustar o container para ocupar toda a largura da página */
+    .container-fluid {
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    
+    /* Remover sombras e bordas para economizar tinta */
+    .card {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+    }
+    
+    /* Garantir que as tabelas sejam exibidas corretamente */
+    .table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+    
+    /* Ajustar os gráficos para melhor visualização */
+    canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    
+    /* Adicionar quebra de página antes de cada nova seção */
+    .card {
+        page-break-before: auto;
+        page-break-after: auto;
+        page-break-inside: avoid;
+    }
+    
+    /* Manter cores nos badges e textos importantes */
+    .badge, .text-primary, .text-success, .text-danger, .text-warning {
+        color: #000 !important;
+        background-color: transparent !important;
+        border: 1px solid #ddd;
+    }
+    
+    /* Ajustar títulos para serem mais destacados */
+    h2, h3, h4, h5 {
+        margin-top: 1em !important;
+        font-weight: bold !important;
+    }
+    
+    /* Adicionar título de impressão */
+    body::before {
+        content: "Relatório EXTREME PDV - Gerado em <?php echo date('d/m/Y H:i'); ?>";
+        display: block;
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+}
+
+
+
+
+
     /* Estilo para os cards de resumo */
     .card-body {
         padding: 1.25rem;
